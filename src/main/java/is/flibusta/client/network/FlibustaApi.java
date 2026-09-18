@@ -57,33 +57,9 @@ public class FlibustaApi {
             try {
                 CatalogFeed feed = new CatalogFeed();
 
-                // 1. Fetch live books from OPDS or HTML with cascading fallbacks
-                List<Book> liveBooks = new ArrayList<>();
-                try {
-                    String xml = fetchString(BASE_URL + "/opds/new/0/new");
-                    liveBooks = parseBooksFromOpds(xml);
-                } catch (Exception ignored) {}
-
-                if (liveBooks.isEmpty()) {
-                    try {
-                        String xml = fetchString(BASE_URL + "/opds/new");
-                        liveBooks = parseBooksFromOpds(xml);
-                    } catch (Exception ignored) {}
-                }
-
-                if (liveBooks.isEmpty()) {
-                    try {
-                        String xml = fetchString(BASE_URL + "/opds");
-                        liveBooks = parseBooksFromOpds(xml);
-                    } catch (Exception ignored) {}
-                }
-
-                if (liveBooks.isEmpty()) {
-                    try {
-                        String html = fetchString(BASE_URL + "/");
-                        liveBooks = parseBooksFromHtml(html);
-                    } catch (Exception ignored) {}
-                }
+                // 1. Fetch live books from OPDS
+                String booksXml = fetchString(BASE_URL + "/opds/new/0/new");
+                List<Book> liveBooks = parseBooksFromOpds(booksXml);
 
                 if (!liveBooks.isEmpty()) {
                     feed.featuredBook = liveBooks.get(0);
@@ -92,21 +68,12 @@ public class FlibustaApi {
                     }
                 }
 
-                // 2. Fetch live series from OPDS or search
+                // 2. Fetch live series from OPDS
                 try {
                     String seriesXml = fetchString(BASE_URL + "/opds/newsequences");
                     feed.popularSeries = parseSeriesFromOpds(seriesXml);
                 } catch (Exception ignored) {
-                    try {
-                        String seriesHtml = fetchString(BASE_URL + "/booksearch?ask=%D0%94%D0%BE%D0%B7%D0%BE%D1%80&chs=on");
-                        feed.popularSeries = parseSeriesFromHtml(seriesHtml);
-                    } catch (Exception ignored2) {
-                        feed.popularSeries = new ArrayList<>();
-                    }
-                }
-
-                if (feed.featuredBook == null && feed.recommendedBooks.isEmpty() && feed.popularSeries.isEmpty()) {
-                    throw new Exception("Не удалось загрузить каталог Флибусты");
+                    feed.popularSeries = new ArrayList<>();
                 }
 
                 mainHandler.post(() -> callback.onSuccess(feed));
@@ -184,11 +151,8 @@ public class FlibustaApi {
                     }
                 } catch (Exception ignored) {}
 
-                // General fallback
-                String generalUrl = BASE_URL + "/booksearch?ask=" + encoded;
-                String generalHtml = fetchString(generalUrl);
-                BookPage generalPage = parseBookPageFromHtml(generalHtml);
-                mainHandler.post(() -> callback.onSuccess(generalPage));
+                // Return empty if not found
+                mainHandler.post(() -> callback.onSuccess(new BookPage(new ArrayList<>(), null)));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e));
             }
@@ -218,11 +182,87 @@ public class FlibustaApi {
             return;
         }
 
+    public static void loadAuthorBooksPage(String authorId, String defaultAuthor, Callback<BookPage> callback) {
         executor.execute(() -> {
             try {
+                String authorOpdsUrl = BASE_URL + "/opds/author/" + authorId + "/alphabet";
+                String opdsXml = fetchString(authorOpdsUrl);
+                BookPage page = parseBookPageFromOpds(opdsXml);
+                if (defaultAuthor != null && !defaultAuthor.isEmpty()) {
+                    for (Book b : page.getBooks()) {
+                        if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                                b.getAuthor().equalsIgnoreCase("Не указан") ||
+                                b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                            b.setAuthor(defaultAuthor);
+                        }
+                    }
+                }
+                mainHandler.post(() -> callback.onSuccess(page));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void searchBooksByAuthorPage(String authorName, String pageUrl, Callback<BookPage> callback) {
+        if (pageUrl != null && !pageUrl.isEmpty()) {
+            fetchBooksPage(pageUrl, new Callback<BookPage>() {
+                @Override
+                public void onSuccess(BookPage page) {
+                    if (page != null && page.getBooks() != null) {
+                        for (Book b : page.getBooks()) {
+                            if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                                    b.getAuthor().equalsIgnoreCase("Не указан") ||
+                                    b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                                b.setAuthor(authorName);
+                            }
+                        }
+                    }
+                    callback.onSuccess(page);
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    callback.onError(e);
+                }
+            });
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                if (authorName.matches("\\d+")) {
+                    loadAuthorBooksPage(authorName, null, callback);
+                    return;
+                }
+
                 String encoded = URLEncoder.encode(authorName, "UTF-8");
 
-                // 1. Direct OPDS book search
+                // 1. Resolve author ID via HTML author search (cha=on)
+                try {
+                    String htmlUrl = BASE_URL + "/booksearch?ask=" + encoded + "&cha=on";
+                    String html = fetchString(htmlUrl);
+                    Matcher m = Pattern.compile("/a/(\\d+)").matcher(html);
+                    if (m.find()) {
+                        String authorId = m.group(1);
+                        String authorOpdsUrl = BASE_URL + "/opds/author/" + authorId + "/alphabet";
+                        String opdsXml = fetchString(authorOpdsUrl);
+                        BookPage page = parseBookPageFromOpds(opdsXml);
+                        if (!page.getBooks().isEmpty()) {
+                            for (Book b : page.getBooks()) {
+                                if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                                        b.getAuthor().equalsIgnoreCase("Не указан") ||
+                                        b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                                    b.setAuthor(authorName);
+                                }
+                            }
+                            mainHandler.post(() -> callback.onSuccess(page));
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                // 2. Direct OPDS book search
                 try {
                     String opdsUrl = BASE_URL + "/opds/search?searchType=books&searchTerm=" + encoded;
                     String xml = fetchString(opdsUrl);
@@ -240,7 +280,7 @@ public class FlibustaApi {
                     }
                 } catch (Exception ignored) {}
 
-                // 2. Direct HTML booksearch with chb=on
+                // 3. Direct HTML booksearch with chb=on
                 try {
                     String htmlUrl = BASE_URL + "/booksearch?ask=" + encoded + "&chb=on";
                     String html = fetchString(htmlUrl);
@@ -346,17 +386,6 @@ public class FlibustaApi {
                     }
                 } catch (Exception ignored) {}
 
-                // 3. Fallback: general booksearch
-                try {
-                    String generalUrl = BASE_URL + "/booksearch?ask=" + encoded;
-                    String generalHtml = fetchString(generalUrl);
-                    SeriesPage page = parseSeriesPageFromHtml(generalHtml);
-                    if (!page.getSeriesList().isEmpty()) {
-                        mainHandler.post(() -> callback.onSuccess(page));
-                        return;
-                    }
-                } catch (Exception ignored) {}
-
                 mainHandler.post(() -> callback.onSuccess(new SeriesPage(new ArrayList<>(), null)));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e));
@@ -456,6 +485,9 @@ public class FlibustaApi {
     // HTTP UTILITY
     // ==========================================
     private static String fetchString(String urlString) throws Exception {
+        if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
+            urlString = BASE_URL + (urlString.startsWith("/") ? "" : "/") + urlString;
+        }
         URL url = new URL(urlString);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
@@ -531,6 +563,7 @@ public class FlibustaApi {
             String currentTag = "";
             String title = "";
             String author = "";
+            String authorId = "";
             String genre = "";
             String content = "";
             String bookId = "";
@@ -546,6 +579,7 @@ public class FlibustaApi {
                             insideEntry = true;
                             title = "";
                             author = "";
+                            authorId = "";
                             genre = "";
                             content = "";
                             bookId = "";
@@ -560,6 +594,12 @@ public class FlibustaApi {
                                         Matcher m = Pattern.compile("/b/(\\d+)").matcher(href);
                                         if (m.find()) {
                                             bookId = m.group(1);
+                                        }
+                                    }
+                                    if (href.contains("/author/") && authorId.isEmpty()) {
+                                        Matcher mAuth = Pattern.compile("/author/(\\d+)").matcher(href);
+                                        if (mAuth.find()) {
+                                            authorId = mAuth.group(1);
                                         }
                                     }
                                     if (rel != null && (rel.contains("image") || rel.contains("thumbnail") || href.endsWith(".jpg") || href.endsWith(".png"))) {
@@ -598,6 +638,11 @@ public class FlibustaApi {
                                     title = text;
                                 } else if ("name".equals(currentTag) && author.isEmpty()) {
                                     author = text;
+                                } else if ("uri".equals(currentTag) && authorId.isEmpty()) {
+                                    Matcher mAuth = Pattern.compile("/a/(\\d+)").matcher(text);
+                                    if (mAuth.find()) {
+                                        authorId = mAuth.group(1);
+                                    }
                                 } else if ("content".equals(currentTag) && content.isEmpty()) {
                                     content = text.replaceAll("<[^>]+>", " ").trim();
                                     Matcher mSize = Pattern.compile("Размер:\\s*([0-9]+\\s*(?:Kb|Mb|Кб|Мб))", Pattern.CASE_INSENSITIVE).matcher(text);
@@ -619,6 +664,9 @@ public class FlibustaApi {
                                         size.isEmpty() ? "FB2" : size, "fb2", dlUrl);
                                 b.setCoverUrl(coverUrl);
                                 b.setDescription(content);
+                                if (!authorId.isEmpty()) {
+                                    b.setAuthorId(authorId);
+                                }
                                 list.add(b);
                             }
                         }
@@ -629,6 +677,20 @@ public class FlibustaApi {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+
+        if (nextPageUrl == null) {
+            Matcher m1 = Pattern.compile("<link[^>]+href=[\"']([^\"']+)[\"'][^>]+rel=[\"']next[\"']", Pattern.CASE_INSENSITIVE).matcher(xml);
+            if (m1.find()) {
+                String href = m1.group(1);
+                nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+            } else {
+                Matcher m2 = Pattern.compile("<link[^>]+rel=[\"']next[\"'][^>]+href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(xml);
+                if (m2.find()) {
+                    String href = m2.group(1);
+                    nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+                }
+            }
         }
 
         return new BookPage(list, nextPageUrl);
@@ -772,6 +834,20 @@ public class FlibustaApi {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+
+        if (nextPageUrl == null) {
+            Matcher m1 = Pattern.compile("<link[^>]+href=[\"']([^\"']+)[\"'][^>]+rel=[\"']next[\"']", Pattern.CASE_INSENSITIVE).matcher(xml);
+            if (m1.find()) {
+                String href = m1.group(1);
+                nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+            } else {
+                Matcher m2 = Pattern.compile("<link[^>]+rel=[\"']next[\"'][^>]+href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(xml);
+                if (m2.find()) {
+                    String href = m2.group(1);
+                    nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+                }
+            }
         }
 
         return new SeriesPage(list, nextPageUrl);

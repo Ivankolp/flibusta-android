@@ -13,6 +13,7 @@ public class Book implements Serializable {
     private String coverUrl;
     private String description;
     private String status; // "Читаю", "Прочитано", "В планах"
+    private String authorId;
     private String localPath;
     private String dateAdded;
 
@@ -116,6 +117,14 @@ public class Book implements Serializable {
 
     public void setLocalPath(String localPath) {
         this.localPath = localPath;
+    }
+
+    public String getAuthorId() {
+        return authorId;
+    }
+
+    public void setAuthorId(String authorId) {
+        this.authorId = authorId;
     }
 
     public String getDateAdded() {

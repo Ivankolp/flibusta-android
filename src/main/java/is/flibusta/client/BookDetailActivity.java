@@ -109,6 +109,9 @@ public class BookDetailActivity extends AppCompatActivity {
                 intent.putExtra("type", "author");
                 intent.putExtra("query", author);
                 intent.putExtra("author", author);
+                if (book.getAuthorId() != null && !book.getAuthorId().isEmpty()) {
+                    intent.putExtra("author_id", book.getAuthorId());
+                }
                 intent.putExtra("title", "Автор: " + author);
                 startActivity(intent);
             } else {

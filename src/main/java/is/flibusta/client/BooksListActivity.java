@@ -63,6 +63,7 @@ public class BooksListActivity extends AppCompatActivity {
         type = intent.getStringExtra("type");
         query = intent.getStringExtra("query");
         seriesId = intent.getStringExtra("series_id");
+        authorId = intent.getStringExtra("author_id");
         genreUrl = intent.getStringExtra("genre_url");
         displayTitle = intent.getStringExtra("title");
         defaultAuthor = intent.getStringExtra("author");
@@ -209,8 +210,15 @@ public class BooksListActivity extends AppCompatActivity {
             FlibustaApi.loadSeriesBooksPage(seriesId, null, defaultAuthor, callback);
         } else if ("genre".equals(type) && genreUrl != null) {
             FlibustaApi.fetchBooksPage(genreUrl, callback);
-        } else if ("author".equals(type) && query != null) {
-            FlibustaApi.searchBooksByAuthorPage(query, null, callback);
+        } else if ("author".equals(type)) {
+            if (authorId != null && !authorId.isEmpty()) {
+                FlibustaApi.loadAuthorBooksPage(authorId, defaultAuthor, callback);
+            } else if (query != null) {
+                FlibustaApi.searchBooksByAuthorPage(query, null, callback);
+            } else {
+                pbLoading.setVisibility(View.GONE);
+                layoutEmpty.setVisibility(View.VISIBLE);
+            }
         } else if ("genre_search".equals(type) && query != null) {
             FlibustaApi.searchBooksPage(query, null, callback);
         } else if (query != null) {
