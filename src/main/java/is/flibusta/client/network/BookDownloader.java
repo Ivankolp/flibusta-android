@@ -19,7 +19,7 @@ public class BookDownloader {
     public static void downloadBook(Context context, Book book, String format) {
         try {
             String cleanFormat = (format != null && !format.isEmpty()) ? format.toLowerCase() : "fb2";
-            String downloadUrl = FlibustaApi.getMirror() + "/b/" + book.getId() + "/" + cleanFormat;
+            String downloadUrl = FlibustaApi.BASE_URL + "/b/" + book.getId() + "/" + cleanFormat;
 
             String safeTitle = book.getTitle().replaceAll("[\\\\/*?:\"<>|]", "_").trim();
             if (safeTitle.length() > 60) {

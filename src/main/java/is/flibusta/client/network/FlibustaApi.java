@@ -28,6 +28,10 @@ import java.util.regex.Pattern;
 public class FlibustaApi {
     public static final String BASE_URL = "http://flibusta.is";
 
+    public static String getMirror() {
+        return BASE_URL;
+    }
+
     private static final ExecutorService executor = Executors.newFixedThreadPool(4);
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
 
