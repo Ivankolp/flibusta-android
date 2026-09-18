@@ -28,6 +28,7 @@ public class BooksListActivity extends AppCompatActivity {
     private String type;
     private String query;
     private String seriesId;
+    private String authorId;
     private String genreUrl;
     private String displayTitle;
     private String defaultAuthor;
