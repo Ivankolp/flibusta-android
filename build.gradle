@@ -1,0 +1,33 @@
+plugins {
+    id 'com.android.application' version '8.5.2'
+}
+
+android {
+    namespace 'com.example.helloworld'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.helloworld"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+        debug {
+            debuggable true
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // Pure Android SDK - lightning fast build with 0 dependencies!
+}
