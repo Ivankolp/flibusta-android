@@ -159,29 +159,6 @@ public class FlibustaApi {
         });
     }
 
-    public static void searchBooksByAuthorPage(String authorName, String pageUrl, Callback<BookPage> callback) {
-        if (pageUrl != null && !pageUrl.isEmpty()) {
-            fetchBooksPage(pageUrl, new Callback<BookPage>() {
-                @Override
-                public void onSuccess(BookPage page) {
-                    for (Book b : page.getBooks()) {
-                        if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
-                                b.getAuthor().equalsIgnoreCase("Не указан") ||
-                                b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
-                            b.setAuthor(authorName);
-                        }
-                    }
-                    callback.onSuccess(page);
-                }
-
-                @Override
-                public void onError(Exception e) {
-                    callback.onError(e);
-                }
-            });
-            return;
-        }
-
     public static void loadAuthorBooksPage(String authorId, String defaultAuthor, Callback<BookPage> callback) {
         executor.execute(() -> {
             try {
