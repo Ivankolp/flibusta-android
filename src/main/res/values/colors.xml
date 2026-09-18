@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Deep AMOLED Dark Theme Palette -->
+    <color name="bg_primary">#0B0C0E</color>
+    <color name="bg_surface">#16181E</color>
+    <color name="bg_surface_card">#1B1E26</color>
+    <color name="bg_surface_light">#242833</color>
+    <color name="bg_chip">#252936</color>
+
+    <color name="accent_primary">#6C5CE7</color>
+    <color name="accent_secondary">#0984E3</color>
+    <color name="accent_cyan">#00CEC9</color>
+    <color name="accent_green">#00B894</color>
+    <color name="accent_gold">#FDCB6E</color>
+    <color name="accent_red">#D63031</color>
+
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#A4B0BE</color>
+    <color name="text_muted">#576574</color>
+
+    <color name="divider">#1F232D</color>
+    <color name="nav_bar_bg">#111317</color>
+    <color name="transparent">#00000000</color>
+</resources>

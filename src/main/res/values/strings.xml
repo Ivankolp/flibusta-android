@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Флибуста</string>
+    <string name="tab_catalog">Главная</string>
+    <string name="tab_search">Поиск</string>
+    <string name="tab_library">Моя полка</string>
+
+    <string name="featured_title">Книга дня</string>
+    <string name="popular_series_title">🔥 Популярные серии и циклы</string>
+    <string name="recommended_books_title">📚 Рекомендуемые книги</string>
+    <string name="genres_title">Категории</string>
+
+    <string name="search_hint">Поиск книг, авторов, циклов...</string>
+    <string name="tab_books">Книги</string>
+    <string name="tab_series">Серии</string>
+
+    <string name="btn_download">Скачать</string>
+    <string name="btn_to_library">В библиотеку</string>
+    <string name="btn_in_library">В библиотеке ✓</string>
+    <string name="btn_read">Читать</string>
+
+    <string name="filter_all">Все</string>
+    <string name="filter_reading">Читаю</string>
+    <string name="filter_done">Прочитано</string>
+    <string name="filter_planned">В планах</string>
+
+    <string name="empty_library_title">Библиотека пуста</string>
+    <string name="empty_library_desc">Добавляйте интересные книги из поиска или каталога, чтобы не потерять их.</string>
+    <string name="empty_search_desc">Введите название книги, серию или имя автора для поиска по Флибусте.</string>
+</resources>
