@@ -108,6 +108,7 @@ public class BookDetailActivity extends AppCompatActivity {
                 Intent intent = new Intent(BookDetailActivity.this, BooksListActivity.class);
                 intent.putExtra("type", "author");
                 intent.putExtra("query", author);
+                intent.putExtra("author", author);
                 intent.putExtra("title", "Автор: " + author);
                 startActivity(intent);
             } else {

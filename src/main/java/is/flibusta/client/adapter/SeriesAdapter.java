@@ -42,6 +42,14 @@ public class SeriesAdapter extends RecyclerView.Adapter<SeriesAdapter.ViewHolder
         notifyDataSetChanged();
     }
 
+    public void addSeries(List<Series> moreSeries) {
+        if (moreSeries != null && !moreSeries.isEmpty()) {
+            int startPos = this.seriesList.size();
+            this.seriesList.addAll(moreSeries);
+            notifyItemRangeInserted(startPos, moreSeries.size());
+        }
+    }
+
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {

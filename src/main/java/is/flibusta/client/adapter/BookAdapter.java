@@ -51,6 +51,14 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.ViewHolder> {
         notifyDataSetChanged();
     }
 
+    public void addBooks(List<Book> moreBooks) {
+        if (moreBooks != null && !moreBooks.isEmpty()) {
+            int startPos = this.books.size();
+            this.books.addAll(moreBooks);
+            notifyItemRangeInserted(startPos, moreBooks.size());
+        }
+    }
+
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {

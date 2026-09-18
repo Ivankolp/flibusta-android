@@ -95,6 +95,17 @@ public class MainActivity extends AppCompatActivity {
     private SeriesAdapter searchSeriesAdapter;
     private boolean isSearchBooksMode = true;
 
+    // Search Pagination
+    private LinearLayout layoutSearchPagination;
+    private TextView tvSearchPageInfo;
+    private ProgressBar pbSearchLoadMore;
+    private TextView btnSearchLoadMore;
+    private int searchBooksPage = 0;
+    private int searchSeriesPage = 0;
+    private boolean isSearchLoadingMore = false;
+    private boolean hasMoreSearchResults = true;
+    private String lastSearchQuery = "";
+
     // Library Tab
     private TextView chipLibAll;
     private TextView chipLibReading;
@@ -443,7 +454,28 @@ public class MainActivity extends AppCompatActivity {
         layoutSearchEmpty = findViewById(R.id.layout_search_empty);
         rvSearchResults = findViewById(R.id.rv_search_results);
 
-        rvSearchResults.setLayoutManager(new LinearLayoutManager(this));
+        // Search Pagination views
+        layoutSearchPagination = findViewById(R.id.layout_search_pagination);
+        tvSearchPageInfo = findViewById(R.id.tv_search_page_info);
+        pbSearchLoadMore = findViewById(R.id.pb_search_load_more);
+        btnSearchLoadMore = findViewById(R.id.btn_search_load_more);
+        btnSearchLoadMore.setOnClickListener(v -> loadMoreSearchResults());
+
+        LinearLayoutManager lm = new LinearLayoutManager(this);
+        rvSearchResults.setLayoutManager(lm);
+        rvSearchResults.addOnScrollListener(new RecyclerView.OnScrollListener() {
+            @Override
+            public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
+                super.onScrolled(recyclerView, dx, dy);
+                if (dy > 0 && hasMoreSearchResults && !isSearchLoadingMore) {
+                    int total = isSearchBooksMode ? searchBooksAdapter.getItemCount() : searchSeriesAdapter.getItemCount();
+                    if (lm.findLastVisibleItemPosition() >= total - 3) {
+                        loadMoreSearchResults();
+                    }
+                }
+            }
+        });
+
         searchBooksAdapter = new BookAdapter(this, null);
         searchBooksAdapter.setListener(new BookAdapter.OnBookActionListener() {
             @Override
@@ -506,21 +538,38 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        lastSearchQuery = query;
+        searchBooksPage = 0;
+        searchSeriesPage = 0;
+        hasMoreSearchResults = true;
+        isSearchLoadingMore = false;
+        if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
+
         pbSearchLoading.setVisibility(View.VISIBLE);
         layoutSearchEmpty.setVisibility(View.GONE);
         rvSearchResults.setVisibility(View.GONE);
 
         if (isSearchBooksMode) {
             rvSearchResults.setAdapter(searchBooksAdapter);
-            FlibustaApi.searchBooks(query, new FlibustaApi.Callback<List<Book>>() {
+            FlibustaApi.searchBooks(query, 0, new FlibustaApi.Callback<List<Book>>() {
                 @Override
                 public void onSuccess(List<Book> result) {
                     pbSearchLoading.setVisibility(View.GONE);
                     if (result != null && !result.isEmpty()) {
                         searchBooksAdapter.updateList(result);
                         rvSearchResults.setVisibility(View.VISIBLE);
+                        if (result.size() >= 20) {
+                            layoutSearchPagination.setVisibility(View.VISIBLE);
+                            tvSearchPageInfo.setText("Страница 1 • Книг: " + searchBooksAdapter.getItemCount());
+                            btnSearchLoadMore.setText("Загрузить ещё 20 книг");
+                            btnSearchLoadMore.setVisibility(View.VISIBLE);
+                        } else {
+                            hasMoreSearchResults = false;
+                            layoutSearchPagination.setVisibility(View.GONE);
+                        }
                     } else {
                         layoutSearchEmpty.setVisibility(View.VISIBLE);
+                        if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
                     }
                 }
 
@@ -528,20 +577,31 @@ public class MainActivity extends AppCompatActivity {
                 public void onError(Exception e) {
                     pbSearchLoading.setVisibility(View.GONE);
                     layoutSearchEmpty.setVisibility(View.VISIBLE);
+                    if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
                     Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
                 }
             });
         } else {
             rvSearchResults.setAdapter(searchSeriesAdapter);
-            FlibustaApi.searchSeries(query, new FlibustaApi.Callback<List<Series>>() {
+            FlibustaApi.searchSeries(query, 0, new FlibustaApi.Callback<List<Series>>() {
                 @Override
                 public void onSuccess(List<Series> result) {
                     pbSearchLoading.setVisibility(View.GONE);
                     if (result != null && !result.isEmpty()) {
                         searchSeriesAdapter.updateList(result);
                         rvSearchResults.setVisibility(View.VISIBLE);
+                        if (result.size() >= 20) {
+                            layoutSearchPagination.setVisibility(View.VISIBLE);
+                            tvSearchPageInfo.setText("Страница 1 • Серий: " + searchSeriesAdapter.getItemCount());
+                            btnSearchLoadMore.setText("Загрузить ещё серии");
+                            btnSearchLoadMore.setVisibility(View.VISIBLE);
+                        } else {
+                            hasMoreSearchResults = false;
+                            layoutSearchPagination.setVisibility(View.GONE);
+                        }
                     } else {
                         layoutSearchEmpty.setVisibility(View.VISIBLE);
+                        if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
                     }
                 }
 
@@ -549,7 +609,94 @@ public class MainActivity extends AppCompatActivity {
                 public void onError(Exception e) {
                     pbSearchLoading.setVisibility(View.GONE);
                     layoutSearchEmpty.setVisibility(View.VISIBLE);
+                    if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
                     Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
+                }
+            });
+        }
+    }
+
+    private void loadMoreSearchResults() {
+        if (isSearchLoadingMore || !hasMoreSearchResults || lastSearchQuery == null || lastSearchQuery.isEmpty()) return;
+
+        isSearchLoadingMore = true;
+        pbSearchLoadMore.setVisibility(View.VISIBLE);
+        btnSearchLoadMore.setEnabled(false);
+
+        if (isSearchBooksMode) {
+            int nextPage = searchBooksPage + 1;
+            FlibustaApi.searchBooks(lastSearchQuery, nextPage, new FlibustaApi.Callback<List<Book>>() {
+                @Override
+                public void onSuccess(List<Book> moreBooks) {
+                    isSearchLoadingMore = false;
+                    pbSearchLoadMore.setVisibility(View.GONE);
+                    btnSearchLoadMore.setEnabled(true);
+
+                    if (moreBooks == null || moreBooks.isEmpty()) {
+                        hasMoreSearchResults = false;
+                        btnSearchLoadMore.setVisibility(View.GONE);
+                        tvSearchPageInfo.setText("Все книги загружены • Всего: " + searchBooksAdapter.getItemCount());
+                        Toast.makeText(MainActivity.this, "Все доступные книги загружены", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    searchBooksPage = nextPage;
+                    searchBooksAdapter.addBooks(moreBooks);
+                    tvSearchPageInfo.setText("Страница " + (searchBooksPage + 1) + " • Книг: " + searchBooksAdapter.getItemCount());
+
+                    if (moreBooks.size() < 20) {
+                        hasMoreSearchResults = false;
+                        btnSearchLoadMore.setVisibility(View.GONE);
+                        tvSearchPageInfo.setText("Все книги загружены • Всего: " + searchBooksAdapter.getItemCount());
+                    }
+
+                    Toast.makeText(MainActivity.this, "Загружено ещё " + moreBooks.size() + " книг", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    isSearchLoadingMore = false;
+                    pbSearchLoadMore.setVisibility(View.GONE);
+                    btnSearchLoadMore.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Не удалось загрузить следующую страницу", Toast.LENGTH_SHORT).show();
+                }
+            });
+        } else {
+            int nextPage = searchSeriesPage + 1;
+            FlibustaApi.searchSeries(lastSearchQuery, nextPage, new FlibustaApi.Callback<List<Series>>() {
+                @Override
+                public void onSuccess(List<Series> moreSeries) {
+                    isSearchLoadingMore = false;
+                    pbSearchLoadMore.setVisibility(View.GONE);
+                    btnSearchLoadMore.setEnabled(true);
+
+                    if (moreSeries == null || moreSeries.isEmpty()) {
+                        hasMoreSearchResults = false;
+                        btnSearchLoadMore.setVisibility(View.GONE);
+                        tvSearchPageInfo.setText("Все серии загружены • Всего: " + searchSeriesAdapter.getItemCount());
+                        Toast.makeText(MainActivity.this, "Все доступные серии загружены", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    searchSeriesPage = nextPage;
+                    searchSeriesAdapter.addSeries(moreSeries);
+                    tvSearchPageInfo.setText("Страница " + (searchSeriesPage + 1) + " • Серий: " + searchSeriesAdapter.getItemCount());
+
+                    if (moreSeries.size() < 20) {
+                        hasMoreSearchResults = false;
+                        btnSearchLoadMore.setVisibility(View.GONE);
+                        tvSearchPageInfo.setText("Все серии загружены • Всего: " + searchSeriesAdapter.getItemCount());
+                    }
+
+                    Toast.makeText(MainActivity.this, "Загружено ещё " + moreSeries.size() + " серий", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    isSearchLoadingMore = false;
+                    pbSearchLoadMore.setVisibility(View.GONE);
+                    btnSearchLoadMore.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Не удалось загрузить следующую страницу", Toast.LENGTH_SHORT).show();
                 }
             });
         }

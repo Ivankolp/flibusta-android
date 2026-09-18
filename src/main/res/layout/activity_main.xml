@@ -729,11 +729,72 @@
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rv_search_results"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:clipToPadding="false"
                 android:paddingTop="4dp"
-                android:paddingBottom="16dp"
+                android:paddingBottom="8dp"
                 android:visibility="gone" />
+
+            <!-- Search Pagination Bottom Bar -->
+            <LinearLayout
+                android:id="@+id/layout_search_pagination"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/bg_surface"
+                android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="12dp"
+                android:visibility="gone">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/divider"
+                    android:layout_marginBottom="8dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tv_search_page_info"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp"
+                        android:text="Страница 1" />
+
+                    <ProgressBar
+                        android:id="@+id/pb_search_load_more"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:layout_marginEnd="12dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/btn_search_load_more"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/bg_button_accent"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:minHeight="48dp"
+                        android:gravity="center"
+                        android:paddingStart="16dp"
+                        android:paddingEnd="16dp"
+                        android:text="Загрузить ещё 20 книг"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:contentDescription="Загрузить следующие результаты" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <!-- TAB 4: MY LIBRARY -->
