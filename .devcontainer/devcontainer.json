@@ -1,14 +1,14 @@
 {
   "name": "Android Codespaces",
   "image": "ghcr.io/cirruslabs/android-sdk:34",
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {}
+  },
   "customizations": {
     "vscode": {
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash"
-      },
-      "extensions": [
-        "vscjava.vscode-java-pack"
-      ]
+      }
     }
   },
   "postCreateCommand": "chmod +x gradlew"
