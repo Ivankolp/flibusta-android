@@ -80,12 +80,20 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.ViewHolder> {
 
         boolean inLib = db.isBookInLibrary(book.getId());
         if (inLib) {
-            holder.btnLibrary.setText("В библиотеке ✓");
+            holder.btnLibrary.setText("В библиотеке");
             holder.btnLibrary.setTextColor(context.getResources().getColor(R.color.accent_green));
+            holder.btnLibrary.setContentDescription("Книга в библиотеке: " + book.getTitle());
         } else {
-            holder.btnLibrary.setText("+ Полка");
+            holder.btnLibrary.setText("На полку");
             holder.btnLibrary.setTextColor(context.getResources().getColor(R.color.text_secondary));
+            holder.btnLibrary.setContentDescription("Добавить на полку: " + book.getTitle());
         }
+
+        holder.btnDownload.setText("FB2");
+        holder.btnDownload.setContentDescription("Скачать в формате FB2: " + book.getTitle());
+
+        // Card accessibility
+        holder.itemView.setContentDescription(book.getTitle() + ", автор: " + book.getAuthor() + ", жанр: " + book.getGenre());
 
         // Clicking the card opens full book details!
         holder.itemView.setOnClickListener(v -> {
@@ -99,8 +107,9 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.ViewHolder> {
                 listener.onAddToLibrary(book);
             } else {
                 db.addBook(book);
-                holder.btnLibrary.setText("В библиотеке ✓");
+                holder.btnLibrary.setText("В библиотеке");
                 holder.btnLibrary.setTextColor(context.getResources().getColor(R.color.accent_green));
+                holder.btnLibrary.setContentDescription("Книга в библиотеке: " + book.getTitle());
                 Toast.makeText(context, "Добавлено на полку: " + book.getTitle(), Toast.LENGTH_SHORT).show();
             }
         });

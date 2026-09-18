@@ -1,11 +1,11 @@
 package is.flibusta.client;
 
-import android.app.Dialog;
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
-import android.view.Window;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -20,10 +20,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
 import is.flibusta.client.adapter.BookAdapter;
+import is.flibusta.client.adapter.GenreAdapter;
 import is.flibusta.client.adapter.LibraryAdapter;
 import is.flibusta.client.adapter.SeriesAdapter;
 import is.flibusta.client.data.Book;
 import is.flibusta.client.data.DatabaseHelper;
+import is.flibusta.client.data.GenreItem;
 import is.flibusta.client.data.Series;
 import is.flibusta.client.network.BookDownloader;
 import is.flibusta.client.network.FlibustaApi;
@@ -36,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
 
     // Views
     private View viewCatalog;
+    private View viewGenres;
     private View viewSearch;
     private View viewLibrary;
     private BottomNavigationView bottomNav;
@@ -63,10 +66,22 @@ public class MainActivity extends AppCompatActivity {
     private Book currentFeaturedBook;
     private final List<Book> allLoadedBooks = new ArrayList<>();
 
-    // Genre Sorter Chips
+    // Genre Sorter Chips in Catalog
     private TextView chipGenreAll, chipGenreFantasy, chipGenreScifi, chipGenrePopadantsy;
     private TextView chipGenreDetective, chipGenreLitrpg, chipGenreAdventure, chipGenreAction;
     private String currentSelectedGenre = "Все";
+
+    // Genres Tab
+    private ImageButton btnGenresBack;
+    private TextView tvGenresHeaderTitle;
+    private ProgressBar pbGenresLoading;
+    private LinearLayout layoutGenresError;
+    private TextView btnGenresRetry;
+    private RecyclerView rvGenresList;
+    private GenreAdapter genreAdapter;
+    private final List<GenreItem> genresList = new ArrayList<>();
+    private String currentGenreUrl = null;
+    private boolean isInsideCategory = false;
 
     // Search Tab
     private EditText etSearchQuery;
@@ -99,6 +114,7 @@ public class MainActivity extends AppCompatActivity {
 
         initViews();
         setupCatalogTab();
+        setupGenresTab();
         setupSearchTab();
         setupLibraryTab();
         setupNavigation();
@@ -107,8 +123,21 @@ public class MainActivity extends AppCompatActivity {
         loadLiveCatalog();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshLibrary();
+        if (recommendedBooksAdapter != null) {
+            recommendedBooksAdapter.notifyDataSetChanged();
+        }
+        if (searchBooksAdapter != null) {
+            searchBooksAdapter.notifyDataSetChanged();
+        }
+    }
+
     private void initViews() {
         viewCatalog = findViewById(R.id.view_catalog);
+        viewGenres = findViewById(R.id.view_genres);
         viewSearch = findViewById(R.id.view_search);
         viewLibrary = findViewById(R.id.view_library);
         bottomNav = findViewById(R.id.bottom_navigation);
@@ -132,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
         rvPopularSeries = findViewById(R.id.rv_popular_series);
         rvPopularSeries.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
         popularSeriesAdapter = new SeriesAdapter(this, new ArrayList<>());
-        popularSeriesAdapter.setListener(this::showSeriesDetailsDialog);
+        popularSeriesAdapter.setListener(this::openSeriesActivity);
         rvPopularSeries.setAdapter(popularSeriesAdapter);
 
         rvRecommendedBooks = findViewById(R.id.rv_recommended_books);
@@ -141,7 +170,7 @@ public class MainActivity extends AppCompatActivity {
         recommendedBooksAdapter.setListener(new BookAdapter.OnBookActionListener() {
             @Override
             public void onBookClick(Book book) {
-                showBookDetailsDialog(book);
+                openBookDetailActivity(book);
             }
 
             @Override
@@ -163,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
         // Featured book actions
         cardFeatured.setOnClickListener(v -> {
             if (currentFeaturedBook != null) {
-                showBookDetailsDialog(currentFeaturedBook);
+                openBookDetailActivity(currentFeaturedBook);
             }
         });
 
@@ -186,6 +215,103 @@ public class MainActivity extends AppCompatActivity {
 
         // Setup Genre Chips
         setupGenreChips();
+    }
+
+    private void setupGenresTab() {
+        btnGenresBack = findViewById(R.id.btn_genres_back);
+        tvGenresHeaderTitle = findViewById(R.id.tv_genres_header_title);
+        pbGenresLoading = findViewById(R.id.pb_genres_loading);
+        layoutGenresError = findViewById(R.id.layout_genres_error);
+        btnGenresRetry = findViewById(R.id.btn_genres_retry);
+        rvGenresList = findViewById(R.id.rv_genres_list);
+
+        rvGenresList.setLayoutManager(new LinearLayoutManager(this));
+        genreAdapter = new GenreAdapter(this, genresList);
+        genreAdapter.setListener(genre -> {
+            if (genre.isLeaf()) {
+                // Leaf genre: open BooksListActivity
+                Intent intent = new Intent(MainActivity.this, BooksListActivity.class);
+                intent.putExtra("type", "genre");
+                intent.putExtra("genre_url", genre.getUrl());
+                intent.putExtra("title", "Жанр: " + genre.getTitle());
+                startActivity(intent);
+            } else {
+                // Category with subgenres: load subgenres
+                loadCategorySubgenres(genre.getUrl(), genre.getTitle());
+            }
+        });
+        rvGenresList.setAdapter(genreAdapter);
+
+        btnGenresBack.setOnClickListener(v -> loadRootGenres());
+        btnGenresRetry.setOnClickListener(v -> {
+            if (isInsideCategory && currentGenreUrl != null) {
+                loadCategorySubgenres(currentGenreUrl, tvGenresHeaderTitle.getText().toString());
+            } else {
+                loadRootGenres();
+            }
+        });
+    }
+
+    private void loadRootGenres() {
+        isInsideCategory = false;
+        currentGenreUrl = null;
+        btnGenresBack.setVisibility(View.GONE);
+        tvGenresHeaderTitle.setText("Жанры литературы");
+
+        pbGenresLoading.setVisibility(View.VISIBLE);
+        layoutGenresError.setVisibility(View.GONE);
+        rvGenresList.setVisibility(View.GONE);
+
+        FlibustaApi.fetchGenres(null, new FlibustaApi.Callback<List<GenreItem>>() {
+            @Override
+            public void onSuccess(List<GenreItem> result) {
+                pbGenresLoading.setVisibility(View.GONE);
+                if (result != null && !result.isEmpty()) {
+                    genresList.clear();
+                    genresList.addAll(result);
+                    genreAdapter.updateList(genresList);
+                    rvGenresList.setVisibility(View.VISIBLE);
+                } else {
+                    layoutGenresError.setVisibility(View.VISIBLE);
+                }
+            }
+
+            @Override
+            public void onError(Exception e) {
+                pbGenresLoading.setVisibility(View.GONE);
+                layoutGenresError.setVisibility(View.VISIBLE);
+            }
+        });
+    }
+
+    private void loadCategorySubgenres(String url, String categoryTitle) {
+        isInsideCategory = true;
+        currentGenreUrl = url;
+        btnGenresBack.setVisibility(View.VISIBLE);
+        tvGenresHeaderTitle.setText(categoryTitle);
+
+        pbGenresLoading.setVisibility(View.VISIBLE);
+        layoutGenresError.setVisibility(View.GONE);
+        rvGenresList.setVisibility(View.GONE);
+
+        FlibustaApi.fetchGenres(url, new FlibustaApi.Callback<List<GenreItem>>() {
+            @Override
+            public void onSuccess(List<GenreItem> result) {
+                pbGenresLoading.setVisibility(View.GONE);
+                if (result != null && !result.isEmpty()) {
+                    genreAdapter.updateList(result);
+                    rvGenresList.setVisibility(View.VISIBLE);
+                } else {
+                    layoutGenresError.setVisibility(View.VISIBLE);
+                }
+            }
+
+            @Override
+            public void onError(Exception e) {
+                pbGenresLoading.setVisibility(View.GONE);
+                layoutGenresError.setVisibility(View.VISIBLE);
+            }
+        });
     }
 
     private void setupGenreChips() {
@@ -322,7 +448,7 @@ public class MainActivity extends AppCompatActivity {
         searchBooksAdapter.setListener(new BookAdapter.OnBookActionListener() {
             @Override
             public void onBookClick(Book book) {
-                showBookDetailsDialog(book);
+                openBookDetailActivity(book);
             }
 
             @Override
@@ -341,7 +467,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         searchSeriesAdapter = new SeriesAdapter(this, null);
-        searchSeriesAdapter.setListener(this::showSeriesDetailsDialog);
+        searchSeriesAdapter.setListener(this::openSeriesActivity);
 
         btnSearchGo.setOnClickListener(v -> performSearch());
         etSearchQuery.setOnEditorActionListener((v, actionId, event) -> {
@@ -439,7 +565,7 @@ public class MainActivity extends AppCompatActivity {
 
         rvLibraryBooks.setLayoutManager(new LinearLayoutManager(this));
         libraryAdapter = new LibraryAdapter(this, null, this::refreshLibrary);
-        libraryAdapter.setClickListener(this::showBookDetailsDialog);
+        libraryAdapter.setClickListener(this::openBookDetailActivity);
         rvLibraryBooks.setAdapter(libraryAdapter);
 
         chipLibAll.setOnClickListener(v -> setLibraryFilter("Все", chipLibAll));
@@ -482,16 +608,28 @@ public class MainActivity extends AppCompatActivity {
             int id = item.getItemId();
             if (id == R.id.nav_catalog) {
                 viewCatalog.setVisibility(View.VISIBLE);
+                viewGenres.setVisibility(View.GONE);
                 viewSearch.setVisibility(View.GONE);
                 viewLibrary.setVisibility(View.GONE);
                 return true;
+            } else if (id == R.id.nav_genres) {
+                viewCatalog.setVisibility(View.GONE);
+                viewGenres.setVisibility(View.VISIBLE);
+                viewSearch.setVisibility(View.GONE);
+                viewLibrary.setVisibility(View.GONE);
+                if (genresList.isEmpty()) {
+                    loadRootGenres();
+                }
+                return true;
             } else if (id == R.id.nav_search) {
                 viewCatalog.setVisibility(View.GONE);
+                viewGenres.setVisibility(View.GONE);
                 viewSearch.setVisibility(View.VISIBLE);
                 viewLibrary.setVisibility(View.GONE);
                 return true;
             } else if (id == R.id.nav_library) {
                 viewCatalog.setVisibility(View.GONE);
+                viewGenres.setVisibility(View.GONE);
                 viewSearch.setVisibility(View.GONE);
                 viewLibrary.setVisibility(View.VISIBLE);
                 refreshLibrary();
@@ -501,132 +639,22 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // Opens detailed book card with cover, full annotation, and actions
-    public void showBookDetailsDialog(Book book) {
+    // Opens separate full-screen BookDetailActivity
+    public void openBookDetailActivity(Book book) {
         if (book == null) return;
-
-        Dialog dialog = new Dialog(this);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(R.layout.dialog_book_details);
-
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
-        }
-
-        ImageView ivCover = dialog.findViewById(R.id.iv_dialog_cover);
-        TextView tvTitle = dialog.findViewById(R.id.tv_dialog_title);
-        TextView tvAuthor = dialog.findViewById(R.id.tv_dialog_author);
-        TextView tvGenre = dialog.findViewById(R.id.tv_dialog_genre);
-        TextView tvSize = dialog.findViewById(R.id.tv_dialog_size);
-        TextView tvDesc = dialog.findViewById(R.id.tv_dialog_description);
-
-        TextView btnClose = dialog.findViewById(R.id.btn_book_dialog_close);
-        TextView btnToLibrary = dialog.findViewById(R.id.btn_dialog_to_library);
-        TextView btnDownload = dialog.findViewById(R.id.btn_dialog_download);
-        TextView btnRead = dialog.findViewById(R.id.btn_dialog_read);
-
-        tvTitle.setText(book.getTitle());
-        tvAuthor.setText(book.getAuthor());
-        tvGenre.setText(book.getGenre());
-        tvSize.setText(book.getSize());
-
-        String desc = book.getDescription();
-        if (desc != null && !desc.trim().isEmpty()) {
-            tvDesc.setText(desc);
-        } else {
-            tvDesc.setText("Аннотация отсутствует на Флибусте для этого издания.");
-        }
-
-        ImageLoader.loadCover(ivCover, book.getCoverUrl());
-
-        boolean inLib = db.isBookInLibrary(book.getId());
-        btnToLibrary.setText(inLib ? "В библиотеке ✓" : "+ На полку");
-
-        btnClose.setOnClickListener(v -> dialog.dismiss());
-
-        btnToLibrary.setOnClickListener(v -> {
-            db.addBook(book);
-            btnToLibrary.setText("В библиотеке ✓");
-            Toast.makeText(this, "Книга добавлена в библиотеку!", Toast.LENGTH_SHORT).show();
-            refreshLibrary();
-        });
-
-        btnDownload.setOnClickListener(v -> {
-            BookDownloader.downloadBook(this, book, "fb2");
-            refreshLibrary();
-        });
-
-        btnRead.setOnClickListener(v -> {
-            if (book.getLocalPath() != null && !book.getLocalPath().isEmpty()) {
-                BookDownloader.openBook(this, book);
-            } else {
-                Toast.makeText(this, "Скачиваем и открываем в читалке...", Toast.LENGTH_SHORT).show();
-                BookDownloader.downloadBook(this, book, "fb2");
-                refreshLibrary();
-            }
-        });
-
-        dialog.show();
+        Intent intent = new Intent(this, BookDetailActivity.class);
+        intent.putExtra("book", book);
+        startActivity(intent);
     }
 
-    private void showSeriesDetailsDialog(Series series) {
-        Dialog dialog = new Dialog(this);
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-        dialog.setContentView(R.layout.dialog_series_books);
-
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
-        }
-
-        TextView tvTitle = dialog.findViewById(R.id.tv_dialog_series_title);
-        TextView tvAuthor = dialog.findViewById(R.id.tv_dialog_series_author);
-        TextView btnClose = dialog.findViewById(R.id.btn_dialog_close);
-        RecyclerView rvBooks = dialog.findViewById(R.id.rv_dialog_series_books);
-
-        tvTitle.setText(series.getTitle());
-        tvAuthor.setText(series.getAuthor() + " • " + (series.getBookCount() > 0 ? series.getBookCount() + " книг" : "Серия"));
-        btnClose.setOnClickListener(v -> dialog.dismiss());
-
-        rvBooks.setLayoutManager(new LinearLayoutManager(this));
-        BookAdapter adapter = new BookAdapter(this, series.getBooks());
-        adapter.setListener(new BookAdapter.OnBookActionListener() {
-            @Override
-            public void onBookClick(Book book) {
-                showBookDetailsDialog(book);
-            }
-
-            @Override
-            public void onDownload(Book book) {
-                BookDownloader.downloadBook(MainActivity.this, book, "fb2");
-                refreshLibrary();
-            }
-
-            @Override
-            public void onAddToLibrary(Book book) {
-                db.addBook(book);
-                adapter.notifyDataSetChanged();
-                refreshLibrary();
-                Toast.makeText(MainActivity.this, "Добавлено на полку: " + book.getTitle(), Toast.LENGTH_SHORT).show();
-            }
-        });
-        rvBooks.setAdapter(adapter);
-
-        if (series.getBooks() == null || series.getBooks().isEmpty()) {
-            Toast.makeText(this, "Загрузка книг цикла с Флибусты...", Toast.LENGTH_SHORT).show();
-            FlibustaApi.loadSeriesDetails(series, new FlibustaApi.Callback<Series>() {
-                @Override
-                public void onSuccess(Series result) {
-                    adapter.updateList(result.getBooks());
-                    tvAuthor.setText(result.getAuthor() + " • " + result.getBookCount() + " книг");
-                }
-
-                @Override
-                public void onError(Exception e) {
-                    Toast.makeText(MainActivity.this, "Не удалось загрузить книги цикла", Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-
-        dialog.show();
+    // Opens separate full-screen BooksListActivity for a series
+    private void openSeriesActivity(Series series) {
+        if (series == null) return;
+        Intent intent = new Intent(this, BooksListActivity.class);
+        intent.putExtra("type", "series");
+        intent.putExtra("series_id", series.getId());
+        intent.putExtra("author", series.getAuthor());
+        intent.putExtra("title", "Серия: " + series.getTitle());
+        startActivity(intent);
     }
 }

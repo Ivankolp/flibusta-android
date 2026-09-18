@@ -6,7 +6,7 @@
     android:background="@color/bg_primary"
     android:orientation="vertical">
 
-    <!-- Top App Header: Clean, no mirror selector -->
+    <!-- Top App Header: Clean, single mirror -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -21,7 +21,7 @@
             android:layout_width="28dp"
             android:layout_height="28dp"
             android:src="@drawable/ic_book"
-            android:contentDescription="Logo" />
+            android:importantForAccessibility="no" />
 
         <TextView
             android:layout_width="wrap_content"
@@ -41,6 +41,11 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_badge"
+            android:contentDescription="Зеркало flibusta.is"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
             android:text="flibusta.is"
             android:textColor="@color/text_muted"
             android:textSize="11sp" />
@@ -84,7 +89,8 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="⚠️ Не удалось загрузить каталог с Флибусты"
+                    android:gravity="center"
+                    android:text="Не удалось загрузить каталог с Флибусты"
                     android:textColor="@color/text_primary"
                     android:textSize="16sp"
                     android:textStyle="bold" />
@@ -96,10 +102,16 @@
                     android:layout_marginTop="16dp"
                     android:background="@drawable/bg_button_accent"
                     android:clickable="true"
+                    android:contentDescription="Повторить загрузку каталога"
                     android:focusable="true"
+                    android:minHeight="48dp"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp"
                     android:text="Повторить попытку"
                     android:textColor="@color/text_primary"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -150,7 +162,7 @@
                                     android:layout_height="match_parent"
                                     android:scaleType="centerCrop"
                                     android:src="@drawable/ic_book"
-                                    android:contentDescription="Cover" />
+                                    android:importantForAccessibility="no" />
                             </androidx.cardview.widget.CardView>
 
                             <LinearLayout
@@ -174,7 +186,7 @@
                                         android:paddingEnd="8dp"
                                         android:paddingTop="3dp"
                                         android:paddingBottom="3dp"
-                                        android:text="🔥 КНИГА ДНЯ"
+                                        android:text="Книга дня"
                                         android:textColor="@color/text_primary"
                                         android:textSize="10sp"
                                         android:textStyle="bold" />
@@ -238,11 +250,12 @@
                                         android:layout_height="wrap_content"
                                         android:background="@drawable/bg_button_secondary"
                                         android:clickable="true"
+                                        android:contentDescription="Добавить книгу дня в библиотеку"
                                         android:focusable="true"
-                                        android:paddingStart="10dp"
-                                        android:paddingEnd="10dp"
-                                        android:paddingTop="5dp"
-                                        android:paddingBottom="5dp"
+                                        android:minHeight="44dp"
+                                        android:gravity="center"
+                                        android:paddingStart="12dp"
+                                        android:paddingEnd="12dp"
                                         android:text="@string/btn_to_library"
                                         android:textColor="@color/text_secondary"
                                         android:textSize="11sp"
@@ -255,11 +268,12 @@
                                         android:layout_marginStart="8dp"
                                         android:background="@drawable/bg_button_accent"
                                         android:clickable="true"
+                                        android:contentDescription="Скачать книгу дня"
                                         android:focusable="true"
-                                        android:paddingStart="10dp"
-                                        android:paddingEnd="10dp"
-                                        android:paddingTop="5dp"
-                                        android:paddingBottom="5dp"
+                                        android:minHeight="44dp"
+                                        android:gravity="center"
+                                        android:paddingStart="12dp"
+                                        android:paddingEnd="12dp"
                                         android:text="@string/btn_download"
                                         android:textColor="@color/text_primary"
                                         android:textSize="11sp"
@@ -325,7 +339,11 @@
                                 android:background="@drawable/bg_chip_selected"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🔥 Все"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Все"
                                 android:textColor="@color/text_primary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -338,7 +356,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🧙 Фэнтези"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Фэнтези"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -351,7 +373,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🚀 Фантастика"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Фантастика"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -364,7 +390,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🌀 Попаданцы"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Попаданцы"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -377,7 +407,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🔍 Детективы"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Детективы"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -390,7 +424,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🎮 ЛитРПГ"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="ЛитРПГ"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -403,7 +441,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="🧭 Приключения"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Приключения"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -416,7 +458,11 @@
                                 android:background="@drawable/bg_chip"
                                 android:clickable="true"
                                 android:focusable="true"
-                                android:text="⚔️ Боевики"
+                                android:minHeight="44dp"
+                                android:gravity="center"
+                                android:paddingStart="12dp"
+                                android:paddingEnd="12dp"
+                                android:text="Боевики"
                                 android:textColor="@color/text_secondary"
                                 android:textSize="12sp"
                                 android:textStyle="bold" />
@@ -446,7 +492,114 @@
             </ScrollView>
         </FrameLayout>
 
-        <!-- TAB 2: SEARCH -->
+        <!-- TAB 2: GENRES -->
+        <LinearLayout
+            android:id="@+id/view_genres"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- Genres Header / Breadcrumb Bar -->
+            <LinearLayout
+                android:id="@+id/layout_genres_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
+                android:background="@color/bg_primary">
+
+                <ImageButton
+                    android:id="@+id/btn_genres_back"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Назад ко всем жанрам"
+                    android:src="@drawable/ic_arrow_back"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/tv_genres_header_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:text="Жанры литературы"
+                    android:textColor="@color/text_primary"
+                    android:textSize="17sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/divider" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <ProgressBar
+                    android:id="@+id/pb_genres_loading"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:visibility="visible" />
+
+                <LinearLayout
+                    android:id="@+id/layout_genres_error"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="32dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="Не удалось загрузить жанры с Флибусты"
+                        android:textColor="@color/text_primary"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/btn_genres_retry"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:background="@drawable/bg_button_accent"
+                        android:clickable="true"
+                        android:contentDescription="Повторить загрузку жанров"
+                        android:focusable="true"
+                        android:minHeight="48dp"
+                        android:paddingStart="20dp"
+                        android:paddingEnd="20dp"
+                        android:paddingTop="12dp"
+                        android:paddingBottom="12dp"
+                        android:text="Повторить попытку"
+                        android:textColor="@color/text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rv_genres_list"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipToPadding="false"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="16dp"
+                    android:visibility="gone" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- TAB 3: SEARCH -->
         <LinearLayout
             android:id="@+id/view_search"
             android:layout_width="match_parent"
@@ -465,13 +618,15 @@
                 <EditText
                     android:id="@+id/et_search_query"
                     android:layout_width="0dp"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:background="@drawable/bg_search_input"
                     android:hint="@string/search_hint"
                     android:imeOptions="actionSearch"
                     android:inputType="text"
                     android:maxLines="1"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
                     android:textColor="@color/text_primary"
                     android:textColorHint="@color/text_muted"
                     android:textSize="14sp" />
@@ -479,18 +634,18 @@
                 <TextView
                     android:id="@+id/btn_search_go"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/bg_button_accent"
                     android:clickable="true"
+                    android:contentDescription="Выполнить поиск"
                     android:focusable="true"
-                    android:paddingStart="14dp"
-                    android:paddingEnd="14dp"
-                    android:paddingTop="10dp"
-                    android:paddingBottom="10dp"
+                    android:gravity="center"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
                     android:text="Найти"
                     android:textColor="@color/text_primary"
-                    android:textSize="13sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -506,26 +661,32 @@
                 <TextView
                     android:id="@+id/chip_search_books"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="44dp"
                     android:background="@drawable/bg_chip_selected"
                     android:clickable="true"
                     android:focusable="true"
-                    android:text="📖 Книги"
+                    android:gravity="center"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="Книги"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/chip_search_series"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="44dp"
                     android:layout_marginStart="8dp"
                     android:background="@drawable/bg_chip"
                     android:clickable="true"
                     android:focusable="true"
-                    android:text="📚 Серии и Циклы"
+                    android:gravity="center"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="Серии и циклы"
                     android:textColor="@color/text_secondary"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
 
@@ -550,9 +711,9 @@
                 <ImageView
                     android:layout_width="64dp"
                     android:layout_height="64dp"
-                    android:alpha="0.4"
+                    android:alpha="0.3"
                     android:src="@drawable/ic_search"
-                    android:contentDescription="Search Icon" />
+                    android:importantForAccessibility="no" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -575,7 +736,7 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- TAB 3: MY LIBRARY -->
+        <!-- TAB 4: MY LIBRARY -->
         <LinearLayout
             android:id="@+id/view_library"
             android:layout_width="match_parent"
@@ -601,10 +762,13 @@
                     <TextView
                         android:id="@+id/chip_lib_all"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_height="44dp"
                         android:background="@drawable/bg_chip_selected"
                         android:clickable="true"
                         android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
                         android:text="@string/filter_all"
                         android:textColor="@color/text_primary"
                         android:textSize="12sp"
@@ -613,11 +777,14 @@
                     <TextView
                         android:id="@+id/chip_lib_reading"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_height="44dp"
                         android:layout_marginStart="8dp"
                         android:background="@drawable/bg_chip"
                         android:clickable="true"
                         android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
                         android:text="@string/filter_reading"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp"
@@ -626,11 +793,14 @@
                     <TextView
                         android:id="@+id/chip_lib_done"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_height="44dp"
                         android:layout_marginStart="8dp"
                         android:background="@drawable/bg_chip"
                         android:clickable="true"
                         android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
                         android:text="@string/filter_done"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp"
@@ -639,11 +809,14 @@
                     <TextView
                         android:id="@+id/chip_lib_planned"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
+                        android:layout_height="44dp"
                         android:layout_marginStart="8dp"
                         android:background="@drawable/bg_chip"
                         android:clickable="true"
                         android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
                         android:text="@string/filter_planned"
                         android:textColor="@color/text_secondary"
                         android:textSize="12sp"
@@ -663,9 +836,9 @@
                 <ImageView
                     android:layout_width="64dp"
                     android:layout_height="64dp"
-                    android:alpha="0.4"
+                    android:alpha="0.3"
                     android:src="@drawable/ic_library"
-                    android:contentDescription="Empty Library" />
+                    android:importantForAccessibility="no" />
 
                 <TextView
                     android:layout_width="wrap_content"

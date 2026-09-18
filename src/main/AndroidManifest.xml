@@ -24,6 +24,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".BookDetailActivity"
+            android:exported="false"
+            android:label="О книге" />
+
+        <activity
+            android:name=".BooksListActivity"
+            android:exported="false"
+            android:label="Список книг" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

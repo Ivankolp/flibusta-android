@@ -70,6 +70,8 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
 
         ImageLoader.loadCover(holder.ivCover, book.getCoverUrl());
 
+        holder.itemView.setContentDescription(book.getTitle() + ", автор: " + book.getAuthor() + ", статус: " + book.getStatus());
+
         holder.itemView.setOnClickListener(v -> {
             if (clickListener != null) {
                 clickListener.onBookClick(book);
@@ -77,6 +79,7 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
         });
 
         // Status click -> Change status dialog
+        holder.tvStatus.setContentDescription("Статус книги: " + book.getStatus() + ". Нажмите, чтобы изменить статус");
         holder.tvStatus.setOnClickListener(v -> {
             String[] statuses = new String[]{"Читаю", "Прочитано", "В планах"};
             new AlertDialog.Builder(context)
@@ -93,6 +96,7 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
         });
 
         // Delete button
+        holder.btnDelete.setContentDescription("Удалить книгу из библиотеки: " + book.getTitle());
         holder.btnDelete.setOnClickListener(v -> {
             new AlertDialog.Builder(context)
                     .setTitle("Удалить с полки?")
@@ -110,6 +114,7 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
         });
 
         // Read button
+        holder.btnRead.setContentDescription("Читать книгу: " + book.getTitle());
         holder.btnRead.setOnClickListener(v -> {
             if (book.getLocalPath() != null && !book.getLocalPath().isEmpty()) {
                 BookDownloader.openBook(context, book);

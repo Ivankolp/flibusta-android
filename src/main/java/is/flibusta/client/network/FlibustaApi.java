@@ -7,6 +7,7 @@ import android.util.Xml;
 import org.xmlpull.v1.XmlPullParser;
 
 import is.flibusta.client.data.Book;
+import is.flibusta.client.data.GenreItem;
 import is.flibusta.client.data.Series;
 
 import java.io.BufferedReader;
@@ -77,6 +78,61 @@ public class FlibustaApi {
         });
     }
 
+    public static void fetchGenres(String url, Callback<List<GenreItem>> callback) {
+        executor.execute(() -> {
+            try {
+                String targetUrl = (url != null && !url.isEmpty()) ? url : BASE_URL + "/opds/genres";
+                String xml = fetchString(targetUrl);
+                List<GenreItem> list = parseGenreItemsFromOpds(xml);
+                mainHandler.post(() -> callback.onSuccess(list));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void fetchBooksFromUrl(String url, Callback<List<Book>> callback) {
+        executor.execute(() -> {
+            try {
+                String xml = fetchString(url);
+                List<Book> list = parseBooksFromOpds(xml);
+                mainHandler.post(() -> callback.onSuccess(list));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void searchBooksByAuthor(String authorName, Callback<List<Book>> callback) {
+        executor.execute(() -> {
+            try {
+                String encoded = URLEncoder.encode(authorName, "UTF-8");
+
+                // 1. Try author search via OPDS
+                try {
+                    String searchXml = fetchString(BASE_URL + "/opds/search?searchType=authors&searchTerm=" + encoded);
+                    Matcher m = Pattern.compile("/opds/author/(\\d+)").matcher(searchXml);
+                    if (m.find()) {
+                        String authorId = m.group(1);
+                        String booksXml = fetchString(BASE_URL + "/opds/author/" + authorId + "/alphabet");
+                        List<Book> opdsBooks = parseBooksFromOpds(booksXml);
+                        if (!opdsBooks.isEmpty()) {
+                            mainHandler.post(() -> callback.onSuccess(opdsBooks));
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                // 2. Fallback: search books by author name via HTML
+                String html = fetchString(BASE_URL + "/booksearch?ask=" + encoded);
+                List<Book> htmlBooks = parseBooksFromHtml(html);
+                mainHandler.post(() -> callback.onSuccess(htmlBooks));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
     public static void searchBooks(String query, Callback<List<Book>> callback) {
         executor.execute(() -> {
             try {
@@ -115,30 +171,42 @@ public class FlibustaApi {
         });
     }
 
-    public static void loadSeriesDetails(Series series, Callback<Series> callback) {
+    public static void loadSeriesBooks(String seriesId, String defaultAuthor, Callback<List<Book>> callback) {
         executor.execute(() -> {
             try {
                 // Try OPDS sequencebooks first
-                String opdsUrl = BASE_URL + "/opds/sequencebooks/" + series.getId();
+                String opdsUrl = BASE_URL + "/opds/sequencebooks/" + seriesId;
                 try {
                     String xml = fetchString(opdsUrl);
                     List<Book> books = parseBooksFromOpds(xml);
                     if (!books.isEmpty()) {
-                        series.setBooks(books);
-                        mainHandler.post(() -> callback.onSuccess(series));
+                        mainHandler.post(() -> callback.onSuccess(books));
                         return;
                     }
-                } catch (Exception ignored) {
-                }
+                } catch (Exception ignored) {}
 
                 // Fallback to HTML sequence page
-                String urlStr = BASE_URL + "/sequence/" + series.getId();
+                String urlStr = BASE_URL + "/sequence/" + seriesId;
                 String html = fetchString(urlStr);
-                List<Book> books = parseSeriesBooksFromHtml(html, series.getAuthor());
-                series.setBooks(books);
-                mainHandler.post(() -> callback.onSuccess(series));
+                List<Book> books = parseSeriesBooksFromHtml(html, defaultAuthor != null ? defaultAuthor : "Серия");
+                mainHandler.post(() -> callback.onSuccess(books));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void loadSeriesDetails(Series series, Callback<Series> callback) {
+        loadSeriesBooks(series.getId(), series.getAuthor(), new Callback<List<Book>>() {
+            @Override
+            public void onSuccess(List<Book> result) {
+                series.setBooks(result);
+                callback.onSuccess(series);
+            }
+
+            @Override
+            public void onError(Exception e) {
+                callback.onError(e);
             }
         });
     }
@@ -170,6 +238,74 @@ public class FlibustaApi {
         reader.close();
         conn.disconnect();
         return sb.toString();
+    }
+
+    public static List<GenreItem> parseGenreItemsFromOpds(String xml) {
+        List<GenreItem> list = new ArrayList<>();
+        try {
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setInput(new StringReader(xml));
+
+            int eventType = parser.getEventType();
+            boolean insideEntry = false;
+            String currentTag = "";
+            String title = "";
+            String content = "";
+            String href = "";
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                String name = parser.getName();
+                switch (eventType) {
+                    case XmlPullParser.START_TAG:
+                        currentTag = name != null ? name.toLowerCase() : "";
+                        if ("entry".equals(currentTag)) {
+                            insideEntry = true;
+                            title = "";
+                            content = "";
+                            href = "";
+                        } else if (insideEntry && "link".equals(currentTag)) {
+                            String h = parser.getAttributeValue(null, "href");
+                            String rel = parser.getAttributeValue(null, "rel");
+                            if (h != null && (rel == null || !rel.contains("search"))) {
+                                if (href.isEmpty() || h.contains("/opds/genres/")) {
+                                    href = h;
+                                }
+                            }
+                        }
+                        break;
+
+                    case XmlPullParser.TEXT:
+                        if (insideEntry) {
+                            String text = parser.getText();
+                            if (text != null) {
+                                text = text.trim();
+                                if ("title".equals(currentTag) && title.isEmpty()) {
+                                    title = text;
+                                } else if ("content".equals(currentTag) && content.isEmpty()) {
+                                    content = text;
+                                }
+                            }
+                        }
+                        break;
+
+                    case XmlPullParser.END_TAG:
+                        if ("entry".equals(name != null ? name.toLowerCase() : "")) {
+                            insideEntry = false;
+                            if (!title.isEmpty() && !href.isEmpty()) {
+                                String fullUrl = href.startsWith("http") ? href : BASE_URL + href;
+                                boolean isLeaf = href.matches(".*/\\d+$");
+                                list.add(new GenreItem(title, fullUrl, content, isLeaf));
+                            }
+                        }
+                        currentTag = "";
+                        break;
+                }
+                eventType = parser.next();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
     }
 
     public static List<Book> parseBooksFromOpds(String xml) {

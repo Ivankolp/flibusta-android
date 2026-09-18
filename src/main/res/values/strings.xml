@@ -2,12 +2,13 @@
 <resources>
     <string name="app_name">Флибуста</string>
     <string name="tab_catalog">Главная</string>
+    <string name="tab_genres">Жанры</string>
     <string name="tab_search">Поиск</string>
     <string name="tab_library">Моя полка</string>
 
     <string name="featured_title">Книга дня</string>
-    <string name="popular_series_title">🔥 Популярные серии и циклы</string>
-    <string name="recommended_books_title">📚 Рекомендуемые книги</string>
+    <string name="popular_series_title">Популярные серии и циклы</string>
+    <string name="recommended_books_title">Рекомендуемые книги</string>
     <string name="genres_title">Категории</string>
 
     <string name="search_hint">Поиск книг, авторов, циклов...</string>
@@ -16,7 +17,7 @@
 
     <string name="btn_download">Скачать</string>
     <string name="btn_to_library">В библиотеку</string>
-    <string name="btn_in_library">В библиотеке ✓</string>
+    <string name="btn_in_library">В библиотеке</string>
     <string name="btn_read">Читать</string>
 
     <string name="filter_all">Все</string>

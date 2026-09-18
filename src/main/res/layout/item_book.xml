@@ -34,7 +34,7 @@
                 android:layout_height="match_parent"
                 android:scaleType="centerCrop"
                 android:src="@drawable/ic_book"
-                android:contentDescription="Cover" />
+                android:importantForAccessibility="no" />
         </androidx.cardview.widget.CardView>
 
         <!-- Book Details: Title, Author, Description, and Actions -->
@@ -75,11 +75,11 @@
                 android:textColor="@color/text_muted"
                 android:textSize="11sp" />
 
-            <!-- Footer: Genre badge, Size, and Compact buttons -->
+            <!-- Footer: Genre badge, Size, and Action buttons -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
+                android:layout_marginTop="8dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -113,12 +113,13 @@
                     android:layout_height="wrap_content"
                     android:background="@drawable/bg_button_secondary"
                     android:clickable="true"
+                    android:contentDescription="Добавить на полку"
                     android:focusable="true"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="4dp"
-                    android:text="+ Полка"
+                    android:minHeight="44dp"
+                    android:gravity="center"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="На полку"
                     android:textColor="@color/text_secondary"
                     android:textSize="11sp"
                     android:textStyle="bold" />
@@ -130,12 +131,13 @@
                     android:layout_marginStart="6dp"
                     android:background="@drawable/bg_button_accent"
                     android:clickable="true"
+                    android:contentDescription="Скачать в формате FB2"
                     android:focusable="true"
-                    android:paddingStart="8dp"
-                    android:paddingEnd="8dp"
-                    android:paddingTop="4dp"
-                    android:paddingBottom="4dp"
-                    android:text="⬇ FB2"
+                    android:minHeight="44dp"
+                    android:gravity="center"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="FB2"
                     android:textColor="@color/text_primary"
                     android:textSize="11sp"
                     android:textStyle="bold" />

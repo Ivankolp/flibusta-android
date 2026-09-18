@@ -59,6 +59,9 @@ public class SeriesAdapter extends RecyclerView.Adapter<SeriesAdapter.ViewHolder
         int count = series.getBookCount();
         holder.tvCount.setText(count > 0 ? count + " томов" : "Серия");
 
+        holder.itemView.setContentDescription("Цикл: " + series.getTitle() + ", автор: " + series.getAuthor() + ", томов: " + (count > 0 ? count : 1));
+        holder.btnOpen.setContentDescription("Смотреть книги цикла: " + series.getTitle());
+
         View.OnClickListener clickAction = v -> {
             if (listener != null) {
                 listener.onSeriesClick(series);
