@@ -116,12 +116,7 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
         // Read button
         holder.btnRead.setContentDescription("Читать книгу: " + book.getTitle());
         holder.btnRead.setOnClickListener(v -> {
-            if (book.getLocalPath() != null && !book.getLocalPath().isEmpty()) {
-                BookDownloader.openBook(context, book);
-            } else {
-                Toast.makeText(context, "Книга еще не скачана на устройство. Скачиваем...", Toast.LENGTH_SHORT).show();
-                BookDownloader.downloadBook(context, book, book.getFormat());
-            }
+            BookDownloader.openBook(context, book);
         });
     }
 

@@ -133,18 +133,15 @@ public class BookDetailActivity extends AppCompatActivity {
 
         // Downloads
         btnDownloadFb2.setOnClickListener(v -> {
-            BookDownloader.downloadBook(this, book, "fb2");
-            updateLibraryButton();
+            BookDownloader.downloadBook(this, book, "fb2", this::updateLibraryButton);
         });
 
         btnDownloadEpub.setOnClickListener(v -> {
-            BookDownloader.downloadBook(this, book, "epub");
-            updateLibraryButton();
+            BookDownloader.downloadBook(this, book, "epub", this::updateLibraryButton);
         });
 
         btnDownloadMobi.setOnClickListener(v -> {
-            BookDownloader.downloadBook(this, book, "mobi");
-            updateLibraryButton();
+            BookDownloader.downloadBook(this, book, "mobi", this::updateLibraryButton);
         });
 
         // Library toggle
@@ -163,12 +160,7 @@ public class BookDetailActivity extends AppCompatActivity {
 
         // Read
         btnRead.setOnClickListener(v -> {
-            if (book.getLocalPath() != null && !book.getLocalPath().isEmpty()) {
-                BookDownloader.openBook(this, book);
-            } else {
-                Toast.makeText(this, "Книга скачивается и будет открыта...", Toast.LENGTH_SHORT).show();
-                BookDownloader.downloadBook(this, book, "fb2");
-            }
+            BookDownloader.openBook(this, book);
         });
     }
 
