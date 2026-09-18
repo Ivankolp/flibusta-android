@@ -9,6 +9,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,12 +23,12 @@ import is.flibusta.client.adapter.BookAdapter;
 import is.flibusta.client.adapter.LibraryAdapter;
 import is.flibusta.client.adapter.SeriesAdapter;
 import is.flibusta.client.data.Book;
-import is.flibusta.client.data.CatalogData;
 import is.flibusta.client.data.DatabaseHelper;
 import is.flibusta.client.data.Series;
 import is.flibusta.client.network.BookDownloader;
 import is.flibusta.client.network.FlibustaApi;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -43,10 +44,22 @@ public class MainActivity extends AppCompatActivity {
     private DatabaseHelper db;
 
     // Catalog Tab
+    private ProgressBar pbCatalogLoading;
+    private LinearLayout layoutCatalogError;
+    private TextView btnCatalogRetry;
+    private ScrollView scrollCatalogContent;
+    private View cardFeatured;
+    private TextView tvFeaturedTitle;
+    private TextView tvFeaturedAuthor;
+    private TextView tvFeaturedDesc;
+    private TextView btnFeaturedToLibrary;
+    private TextView btnFeaturedDownload;
+    private TextView tvHeaderSeries;
     private RecyclerView rvPopularSeries;
     private RecyclerView rvRecommendedBooks;
     private SeriesAdapter popularSeriesAdapter;
     private BookAdapter recommendedBooksAdapter;
+    private Book currentFeaturedBook;
 
     // Search Tab
     private EditText etSearchQuery;
@@ -82,6 +95,9 @@ public class MainActivity extends AppCompatActivity {
         setupSearchTab();
         setupLibraryTab();
         setupNavigation();
+
+        // Load live catalog from Flibusta
+        loadLiveCatalog();
     }
 
     private void initViews() {
@@ -95,29 +111,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupCatalogTab() {
-        // Featured Book
-        Book featured = new Book("82622", "Ведьмак: Последнее желание", "Анджей Сапковский", "Темное фэнтези", "750 KB", "fb2", "http://flibusta.is/b/82622/fb2");
-        findViewById(R.id.btn_featured_to_library).setOnClickListener(v -> {
-            db.addBook(featured);
-            Toast.makeText(this, "«Ведьмак» добавлен на полку!", Toast.LENGTH_SHORT).show();
-            refreshLibrary();
-        });
-        findViewById(R.id.btn_featured_download).setOnClickListener(v -> {
-            BookDownloader.downloadBook(this, featured, "fb2");
-            refreshLibrary();
-        });
+        pbCatalogLoading = findViewById(R.id.pb_catalog_loading);
+        layoutCatalogError = findViewById(R.id.layout_catalog_error);
+        btnCatalogRetry = findViewById(R.id.btn_catalog_retry);
+        scrollCatalogContent = findViewById(R.id.scroll_catalog_content);
 
-        // Popular Series Carousel
+        cardFeatured = findViewById(R.id.card_featured);
+        tvFeaturedTitle = findViewById(R.id.tv_featured_title);
+        tvFeaturedAuthor = findViewById(R.id.tv_featured_author);
+        tvFeaturedDesc = findViewById(R.id.tv_featured_desc);
+        btnFeaturedToLibrary = findViewById(R.id.btn_featured_to_library);
+        btnFeaturedDownload = findViewById(R.id.btn_featured_download);
+
+        tvHeaderSeries = findViewById(R.id.tv_header_series);
         rvPopularSeries = findViewById(R.id.rv_popular_series);
         rvPopularSeries.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
-        popularSeriesAdapter = new SeriesAdapter(this, CatalogData.getPopularSeries());
+        popularSeriesAdapter = new SeriesAdapter(this, new ArrayList<>());
         popularSeriesAdapter.setListener(this::showSeriesDetailsDialog);
         rvPopularSeries.setAdapter(popularSeriesAdapter);
 
-        // Recommended Books Vertical List
         rvRecommendedBooks = findViewById(R.id.rv_recommended_books);
         rvRecommendedBooks.setLayoutManager(new LinearLayoutManager(this));
-        recommendedBooksAdapter = new BookAdapter(this, CatalogData.getRecommendedBooks());
+        recommendedBooksAdapter = new BookAdapter(this, new ArrayList<>());
         recommendedBooksAdapter.setListener(new BookAdapter.OnBookActionListener() {
             @Override
             public void onDownload(Book book) {
@@ -134,6 +149,76 @@ public class MainActivity extends AppCompatActivity {
             }
         });
         rvRecommendedBooks.setAdapter(recommendedBooksAdapter);
+
+        btnCatalogRetry.setOnClickListener(v -> loadLiveCatalog());
+
+        btnFeaturedToLibrary.setOnClickListener(v -> {
+            if (currentFeaturedBook != null) {
+                db.addBook(currentFeaturedBook);
+                Toast.makeText(this, "«" + currentFeaturedBook.getTitle() + "» добавлен на полку!", Toast.LENGTH_SHORT).show();
+                refreshLibrary();
+            }
+        });
+
+        btnFeaturedDownload.setOnClickListener(v -> {
+            if (currentFeaturedBook != null) {
+                BookDownloader.downloadBook(this, currentFeaturedBook, "fb2");
+                refreshLibrary();
+            }
+        });
+    }
+
+    private void loadLiveCatalog() {
+        pbCatalogLoading.setVisibility(View.VISIBLE);
+        scrollCatalogContent.setVisibility(View.GONE);
+        layoutCatalogError.setVisibility(View.GONE);
+
+        FlibustaApi.fetchLiveCatalog(new FlibustaApi.Callback<FlibustaApi.CatalogFeed>() {
+            @Override
+            public void onSuccess(FlibustaApi.CatalogFeed feed) {
+                pbCatalogLoading.setVisibility(View.GONE);
+                scrollCatalogContent.setVisibility(View.VISIBLE);
+
+                // 1. Featured book
+                if (feed.featuredBook != null) {
+                    currentFeaturedBook = feed.featuredBook;
+                    cardFeatured.setVisibility(View.VISIBLE);
+                    tvFeaturedTitle.setText(feed.featuredBook.getTitle());
+                    tvFeaturedAuthor.setText(feed.featuredBook.getAuthor() + " • " + feed.featuredBook.getGenre());
+                    String desc = feed.featuredBook.getDescription();
+                    if (desc != null && !desc.isEmpty()) {
+                        tvFeaturedDesc.setVisibility(View.VISIBLE);
+                        tvFeaturedDesc.setText(desc);
+                    } else {
+                        tvFeaturedDesc.setVisibility(View.GONE);
+                    }
+                } else {
+                    cardFeatured.setVisibility(View.GONE);
+                }
+
+                // 2. Series carousel
+                if (feed.popularSeries != null && !feed.popularSeries.isEmpty()) {
+                    tvHeaderSeries.setVisibility(View.VISIBLE);
+                    rvPopularSeries.setVisibility(View.VISIBLE);
+                    popularSeriesAdapter.updateList(feed.popularSeries);
+                } else {
+                    tvHeaderSeries.setVisibility(View.GONE);
+                    rvPopularSeries.setVisibility(View.GONE);
+                }
+
+                // 3. Recommended books
+                if (feed.recommendedBooks != null) {
+                    recommendedBooksAdapter.updateList(feed.recommendedBooks);
+                }
+            }
+
+            @Override
+            public void onError(Exception e) {
+                pbCatalogLoading.setVisibility(View.GONE);
+                scrollCatalogContent.setVisibility(View.GONE);
+                layoutCatalogError.setVisibility(View.VISIBLE);
+            }
+        });
     }
 
     private void setupSearchTab() {
@@ -150,7 +235,6 @@ public class MainActivity extends AppCompatActivity {
         searchSeriesAdapter = new SeriesAdapter(this, null);
         searchSeriesAdapter.setListener(this::showSeriesDetailsDialog);
 
-        // Search trigger
         btnSearchGo.setOnClickListener(v -> performSearch());
         etSearchQuery.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -160,7 +244,6 @@ public class MainActivity extends AppCompatActivity {
             return false;
         });
 
-        // Mode switch
         chipSearchBooks.setOnClickListener(v -> {
             isSearchBooksMode = true;
             chipSearchBooks.setBackgroundResource(R.drawable.bg_chip_selected);
@@ -324,7 +407,7 @@ public class MainActivity extends AppCompatActivity {
         RecyclerView rvBooks = dialog.findViewById(R.id.rv_dialog_series_books);
 
         tvTitle.setText(series.getTitle());
-        tvAuthor.setText(series.getAuthor() + " • " + series.getBookCount() + " книг");
+        tvAuthor.setText(series.getAuthor() + " • " + (series.getBookCount() > 0 ? series.getBookCount() + " книг" : "Серия"));
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
         rvBooks.setLayoutManager(new LinearLayoutManager(this));
@@ -347,7 +430,7 @@ public class MainActivity extends AppCompatActivity {
         rvBooks.setAdapter(adapter);
 
         if (series.getBooks() == null || series.getBooks().isEmpty()) {
-            Toast.makeText(this, "Загрузка списка книг цикла...", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Загрузка книг цикла с Флибусты...", Toast.LENGTH_SHORT).show();
             FlibustaApi.loadSeriesDetails(series, new FlibustaApi.Callback<Series>() {
                 @Override
                 public void onSuccess(Series result) {
@@ -373,8 +456,9 @@ public class MainActivity extends AppCompatActivity {
                     String selected = mirrors[which];
                     FlibustaApi.setMirror(selected);
                     btnMirrorStatus.setText(selected.replace("http://", "") + " ●");
-                    Toast.makeText(this, "Зеркало изменено на " + selected, Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Зеркало изменено: " + selected, Toast.LENGTH_SHORT).show();
                     dialog.dismiss();
+                    loadLiveCatalog();
                 })
                 .setNegativeButton("Отмена", null)
                 .show();
