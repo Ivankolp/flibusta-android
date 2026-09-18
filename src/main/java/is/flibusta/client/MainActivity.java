@@ -1,12 +1,12 @@
 package is.flibusta.client;
 
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.os.Bundle;
 import android.view.View;
 import android.view.Window;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -27,6 +27,7 @@ import is.flibusta.client.data.DatabaseHelper;
 import is.flibusta.client.data.Series;
 import is.flibusta.client.network.BookDownloader;
 import is.flibusta.client.network.FlibustaApi;
+import is.flibusta.client.network.ImageLoader;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +39,6 @@ public class MainActivity extends AppCompatActivity {
     private View viewSearch;
     private View viewLibrary;
     private BottomNavigationView bottomNav;
-    private TextView btnMirrorStatus;
 
     // Database
     private DatabaseHelper db;
@@ -49,6 +49,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView btnCatalogRetry;
     private ScrollView scrollCatalogContent;
     private View cardFeatured;
+    private ImageView ivFeaturedCover;
     private TextView tvFeaturedTitle;
     private TextView tvFeaturedAuthor;
     private TextView tvFeaturedDesc;
@@ -60,6 +61,12 @@ public class MainActivity extends AppCompatActivity {
     private SeriesAdapter popularSeriesAdapter;
     private BookAdapter recommendedBooksAdapter;
     private Book currentFeaturedBook;
+    private final List<Book> allLoadedBooks = new ArrayList<>();
+
+    // Genre Sorter Chips
+    private TextView chipGenreAll, chipGenreFantasy, chipGenreScifi, chipGenrePopadantsy;
+    private TextView chipGenreDetective, chipGenreLitrpg, chipGenreAdventure, chipGenreAction;
+    private String currentSelectedGenre = "Все";
 
     // Search Tab
     private EditText etSearchQuery;
@@ -105,9 +112,6 @@ public class MainActivity extends AppCompatActivity {
         viewSearch = findViewById(R.id.view_search);
         viewLibrary = findViewById(R.id.view_library);
         bottomNav = findViewById(R.id.bottom_navigation);
-        btnMirrorStatus = findViewById(R.id.btn_mirror_status);
-
-        btnMirrorStatus.setOnClickListener(v -> showMirrorDialog());
     }
 
     private void setupCatalogTab() {
@@ -117,6 +121,7 @@ public class MainActivity extends AppCompatActivity {
         scrollCatalogContent = findViewById(R.id.scroll_catalog_content);
 
         cardFeatured = findViewById(R.id.card_featured);
+        ivFeaturedCover = findViewById(R.id.iv_featured_cover);
         tvFeaturedTitle = findViewById(R.id.tv_featured_title);
         tvFeaturedAuthor = findViewById(R.id.tv_featured_author);
         tvFeaturedDesc = findViewById(R.id.tv_featured_desc);
@@ -135,6 +140,11 @@ public class MainActivity extends AppCompatActivity {
         recommendedBooksAdapter = new BookAdapter(this, new ArrayList<>());
         recommendedBooksAdapter.setListener(new BookAdapter.OnBookActionListener() {
             @Override
+            public void onBookClick(Book book) {
+                showBookDetailsDialog(book);
+            }
+
+            @Override
             public void onDownload(Book book) {
                 BookDownloader.downloadBook(MainActivity.this, book, "fb2");
                 refreshLibrary();
@@ -150,7 +160,12 @@ public class MainActivity extends AppCompatActivity {
         });
         rvRecommendedBooks.setAdapter(recommendedBooksAdapter);
 
-        btnCatalogRetry.setOnClickListener(v -> loadLiveCatalog());
+        // Featured book actions
+        cardFeatured.setOnClickListener(v -> {
+            if (currentFeaturedBook != null) {
+                showBookDetailsDialog(currentFeaturedBook);
+            }
+        });
 
         btnFeaturedToLibrary.setOnClickListener(v -> {
             if (currentFeaturedBook != null) {
@@ -166,6 +181,74 @@ public class MainActivity extends AppCompatActivity {
                 refreshLibrary();
             }
         });
+
+        btnCatalogRetry.setOnClickListener(v -> loadLiveCatalog());
+
+        // Setup Genre Chips
+        setupGenreChips();
+    }
+
+    private void setupGenreChips() {
+        chipGenreAll = findViewById(R.id.chip_genre_all);
+        chipGenreFantasy = findViewById(R.id.chip_genre_fantasy);
+        chipGenreScifi = findViewById(R.id.chip_genre_scifi);
+        chipGenrePopadantsy = findViewById(R.id.chip_genre_popadantsy);
+        chipGenreDetective = findViewById(R.id.chip_genre_detective);
+        chipGenreLitrpg = findViewById(R.id.chip_genre_litrpg);
+        chipGenreAdventure = findViewById(R.id.chip_genre_adventure);
+        chipGenreAction = findViewById(R.id.chip_genre_action);
+
+        chipGenreAll.setOnClickListener(v -> selectGenre("Все", chipGenreAll));
+        chipGenreFantasy.setOnClickListener(v -> selectGenre("фэнтези", chipGenreFantasy));
+        chipGenreScifi.setOnClickListener(v -> selectGenre("фантастик", chipGenreScifi));
+        chipGenrePopadantsy.setOnClickListener(v -> selectGenre("попадан", chipGenrePopadantsy));
+        chipGenreDetective.setOnClickListener(v -> selectGenre("детектив", chipGenreDetective));
+        chipGenreLitrpg.setOnClickListener(v -> selectGenre("литрпг", chipGenreLitrpg));
+        chipGenreAdventure.setOnClickListener(v -> selectGenre("приключ", chipGenreAdventure));
+        chipGenreAction.setOnClickListener(v -> selectGenre("боевик", chipGenreAction));
+    }
+
+    private void selectGenre(String genreFilter, TextView activeChip) {
+        currentSelectedGenre = genreFilter;
+        TextView[] chips = {chipGenreAll, chipGenreFantasy, chipGenreScifi, chipGenrePopadantsy,
+                chipGenreDetective, chipGenreLitrpg, chipGenreAdventure, chipGenreAction};
+
+        for (TextView c : chips) {
+            if (c == activeChip) {
+                c.setBackgroundResource(R.drawable.bg_chip_selected);
+                c.setTextColor(getResources().getColor(R.color.text_primary));
+            } else {
+                c.setBackgroundResource(R.drawable.bg_chip);
+                c.setTextColor(getResources().getColor(R.color.text_secondary));
+            }
+        }
+
+        filterBooksByGenre();
+    }
+
+    private void filterBooksByGenre() {
+        if ("Все".equalsIgnoreCase(currentSelectedGenre)) {
+            recommendedBooksAdapter.updateList(allLoadedBooks);
+            return;
+        }
+
+        List<Book> filtered = new ArrayList<>();
+        for (Book b : allLoadedBooks) {
+            String g = (b.getGenre() != null ? b.getGenre() : "").toLowerCase();
+            String t = (b.getTitle() != null ? b.getTitle() : "").toLowerCase();
+            String d = (b.getDescription() != null ? b.getDescription() : "").toLowerCase();
+
+            if (g.contains(currentSelectedGenre) || t.contains(currentSelectedGenre) || d.contains(currentSelectedGenre)) {
+                filtered.add(b);
+            }
+        }
+
+        if (filtered.isEmpty()) {
+            recommendedBooksAdapter.updateList(allLoadedBooks);
+            Toast.makeText(this, "В свежей ленте мало книг этого жанра, показаны все", Toast.LENGTH_SHORT).show();
+        } else {
+            recommendedBooksAdapter.updateList(filtered);
+        }
     }
 
     private void loadLiveCatalog() {
@@ -185,6 +268,8 @@ public class MainActivity extends AppCompatActivity {
                     cardFeatured.setVisibility(View.VISIBLE);
                     tvFeaturedTitle.setText(feed.featuredBook.getTitle());
                     tvFeaturedAuthor.setText(feed.featuredBook.getAuthor() + " • " + feed.featuredBook.getGenre());
+                    ImageLoader.loadCover(ivFeaturedCover, feed.featuredBook.getCoverUrl());
+
                     String desc = feed.featuredBook.getDescription();
                     if (desc != null && !desc.isEmpty()) {
                         tvFeaturedDesc.setVisibility(View.VISIBLE);
@@ -207,9 +292,11 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 // 3. Recommended books
+                allLoadedBooks.clear();
                 if (feed.recommendedBooks != null) {
-                    recommendedBooksAdapter.updateList(feed.recommendedBooks);
+                    allLoadedBooks.addAll(feed.recommendedBooks);
                 }
+                filterBooksByGenre();
             }
 
             @Override
@@ -232,6 +319,27 @@ public class MainActivity extends AppCompatActivity {
 
         rvSearchResults.setLayoutManager(new LinearLayoutManager(this));
         searchBooksAdapter = new BookAdapter(this, null);
+        searchBooksAdapter.setListener(new BookAdapter.OnBookActionListener() {
+            @Override
+            public void onBookClick(Book book) {
+                showBookDetailsDialog(book);
+            }
+
+            @Override
+            public void onDownload(Book book) {
+                BookDownloader.downloadBook(MainActivity.this, book, "fb2");
+                refreshLibrary();
+            }
+
+            @Override
+            public void onAddToLibrary(Book book) {
+                db.addBook(book);
+                searchBooksAdapter.notifyDataSetChanged();
+                refreshLibrary();
+                Toast.makeText(MainActivity.this, "Добавлено на полку: " + book.getTitle(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
         searchSeriesAdapter = new SeriesAdapter(this, null);
         searchSeriesAdapter.setListener(this::showSeriesDetailsDialog);
 
@@ -294,7 +402,7 @@ public class MainActivity extends AppCompatActivity {
                 public void onError(Exception e) {
                     pbSearchLoading.setVisibility(View.GONE);
                     layoutSearchEmpty.setVisibility(View.VISIBLE);
-                    Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть / зеркало", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
                 }
             });
         } else {
@@ -315,7 +423,7 @@ public class MainActivity extends AppCompatActivity {
                 public void onError(Exception e) {
                     pbSearchLoading.setVisibility(View.GONE);
                     layoutSearchEmpty.setVisibility(View.VISIBLE);
-                    Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть / зеркало", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
                 }
             });
         }
@@ -331,6 +439,7 @@ public class MainActivity extends AppCompatActivity {
 
         rvLibraryBooks.setLayoutManager(new LinearLayoutManager(this));
         libraryAdapter = new LibraryAdapter(this, null, this::refreshLibrary);
+        libraryAdapter.setClickListener(this::showBookDetailsDialog);
         rvLibraryBooks.setAdapter(libraryAdapter);
 
         chipLibAll.setOnClickListener(v -> setLibraryFilter("Все", chipLibAll));
@@ -392,6 +501,74 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    // Opens detailed book card with cover, full annotation, and actions
+    public void showBookDetailsDialog(Book book) {
+        if (book == null) return;
+
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setContentView(R.layout.dialog_book_details);
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
+        }
+
+        ImageView ivCover = dialog.findViewById(R.id.iv_dialog_cover);
+        TextView tvTitle = dialog.findViewById(R.id.tv_dialog_title);
+        TextView tvAuthor = dialog.findViewById(R.id.tv_dialog_author);
+        TextView tvGenre = dialog.findViewById(R.id.tv_dialog_genre);
+        TextView tvSize = dialog.findViewById(R.id.tv_dialog_size);
+        TextView tvDesc = dialog.findViewById(R.id.tv_dialog_description);
+
+        TextView btnClose = dialog.findViewById(R.id.btn_book_dialog_close);
+        TextView btnToLibrary = dialog.findViewById(R.id.btn_dialog_to_library);
+        TextView btnDownload = dialog.findViewById(R.id.btn_dialog_download);
+        TextView btnRead = dialog.findViewById(R.id.btn_dialog_read);
+
+        tvTitle.setText(book.getTitle());
+        tvAuthor.setText(book.getAuthor());
+        tvGenre.setText(book.getGenre());
+        tvSize.setText(book.getSize());
+
+        String desc = book.getDescription();
+        if (desc != null && !desc.trim().isEmpty()) {
+            tvDesc.setText(desc);
+        } else {
+            tvDesc.setText("Аннотация отсутствует на Флибусте для этого издания.");
+        }
+
+        ImageLoader.loadCover(ivCover, book.getCoverUrl());
+
+        boolean inLib = db.isBookInLibrary(book.getId());
+        btnToLibrary.setText(inLib ? "В библиотеке ✓" : "+ На полку");
+
+        btnClose.setOnClickListener(v -> dialog.dismiss());
+
+        btnToLibrary.setOnClickListener(v -> {
+            db.addBook(book);
+            btnToLibrary.setText("В библиотеке ✓");
+            Toast.makeText(this, "Книга добавлена в библиотеку!", Toast.LENGTH_SHORT).show();
+            refreshLibrary();
+        });
+
+        btnDownload.setOnClickListener(v -> {
+            BookDownloader.downloadBook(this, book, "fb2");
+            refreshLibrary();
+        });
+
+        btnRead.setOnClickListener(v -> {
+            if (book.getLocalPath() != null && !book.getLocalPath().isEmpty()) {
+                BookDownloader.openBook(this, book);
+            } else {
+                Toast.makeText(this, "Скачиваем и открываем в читалке...", Toast.LENGTH_SHORT).show();
+                BookDownloader.downloadBook(this, book, "fb2");
+                refreshLibrary();
+            }
+        });
+
+        dialog.show();
+    }
+
     private void showSeriesDetailsDialog(Series series) {
         Dialog dialog = new Dialog(this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -413,6 +590,11 @@ public class MainActivity extends AppCompatActivity {
         rvBooks.setLayoutManager(new LinearLayoutManager(this));
         BookAdapter adapter = new BookAdapter(this, series.getBooks());
         adapter.setListener(new BookAdapter.OnBookActionListener() {
+            @Override
+            public void onBookClick(Book book) {
+                showBookDetailsDialog(book);
+            }
+
             @Override
             public void onDownload(Book book) {
                 BookDownloader.downloadBook(MainActivity.this, book, "fb2");
@@ -446,21 +628,5 @@ public class MainActivity extends AppCompatActivity {
         }
 
         dialog.show();
-    }
-
-    private void showMirrorDialog() {
-        String[] mirrors = new String[]{"http://flibusta.is", "http://flibusta.club", "http://flibusta.site"};
-        new AlertDialog.Builder(this)
-                .setTitle("Выбор зеркала Флибусты")
-                .setSingleChoiceItems(mirrors, 0, (dialog, which) -> {
-                    String selected = mirrors[which];
-                    FlibustaApi.setMirror(selected);
-                    btnMirrorStatus.setText(selected.replace("http://", "") + " ●");
-                    Toast.makeText(this, "Зеркало изменено: " + selected, Toast.LENGTH_SHORT).show();
-                    dialog.dismiss();
-                    loadLiveCatalog();
-                })
-                .setNegativeButton("Отмена", null)
-                .show();
     }
 }

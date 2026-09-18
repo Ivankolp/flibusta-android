@@ -26,8 +26,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class FlibustaApi {
-    public static final String DEFAULT_MIRROR = "http://flibusta.is";
-    private static String currentMirror = DEFAULT_MIRROR;
+    public static final String BASE_URL = "http://flibusta.is";
 
     private static final ExecutorService executor = Executors.newFixedThreadPool(4);
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -43,23 +42,13 @@ public class FlibustaApi {
         void onError(Exception e);
     }
 
-    public static String getMirror() {
-        return currentMirror;
-    }
-
-    public static void setMirror(String mirror) {
-        if (mirror != null && !mirror.isEmpty()) {
-            currentMirror = mirror.replaceAll("/+$", "");
-        }
-    }
-
     public static void fetchLiveCatalog(Callback<CatalogFeed> callback) {
         executor.execute(() -> {
             try {
                 CatalogFeed feed = new CatalogFeed();
 
                 // 1. Fetch live books from OPDS
-                String booksXml = fetchString(currentMirror + "/opds/new/0/new");
+                String booksXml = fetchString(BASE_URL + "/opds/new/0/new");
                 List<Book> liveBooks = parseBooksFromOpds(booksXml);
 
                 if (!liveBooks.isEmpty()) {
@@ -71,7 +60,7 @@ public class FlibustaApi {
 
                 // 2. Fetch live series from OPDS
                 try {
-                    String seriesXml = fetchString(currentMirror + "/opds/newsequences");
+                    String seriesXml = fetchString(BASE_URL + "/opds/newsequences");
                     feed.popularSeries = parseSeriesFromOpds(seriesXml);
                 } catch (Exception ignored) {
                     feed.popularSeries = new ArrayList<>();
@@ -88,11 +77,19 @@ public class FlibustaApi {
         executor.execute(() -> {
             try {
                 String encoded = URLEncoder.encode(query, "UTF-8");
-                String urlStr = currentMirror + "/booksearch?ask=" + encoded;
-                String html = fetchString(urlStr);
+                String opdsUrl = BASE_URL + "/opds/search?searchType=books&searchTerm=" + encoded;
+                String xml = fetchString(opdsUrl);
 
-                List<Book> books = parseBooksFromHtml(html);
-                mainHandler.post(() -> callback.onSuccess(books));
+                List<Book> books = parseBooksFromOpds(xml);
+
+                // Fallback to HTML if OPDS returns empty
+                if (books.isEmpty()) {
+                    String html = fetchString(BASE_URL + "/booksearch?ask=" + encoded);
+                    books = parseBooksFromHtml(html);
+                }
+
+                List<Book> finalBooks = books;
+                mainHandler.post(() -> callback.onSuccess(finalBooks));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e));
             }
@@ -103,7 +100,7 @@ public class FlibustaApi {
         executor.execute(() -> {
             try {
                 String encoded = URLEncoder.encode(query, "UTF-8");
-                String urlStr = currentMirror + "/booksearch?ask=" + encoded + "&chs=on";
+                String urlStr = BASE_URL + "/booksearch?ask=" + encoded + "&chs=on";
                 String html = fetchString(urlStr);
 
                 List<Series> seriesList = parseSeriesFromHtml(html);
@@ -118,7 +115,7 @@ public class FlibustaApi {
         executor.execute(() -> {
             try {
                 // Try OPDS sequencebooks first
-                String opdsUrl = currentMirror + "/opds/sequencebooks/" + series.getId();
+                String opdsUrl = BASE_URL + "/opds/sequencebooks/" + series.getId();
                 try {
                     String xml = fetchString(opdsUrl);
                     List<Book> books = parseBooksFromOpds(xml);
@@ -131,7 +128,7 @@ public class FlibustaApi {
                 }
 
                 // Fallback to HTML sequence page
-                String urlStr = currentMirror + "/sequence/" + series.getId();
+                String urlStr = BASE_URL + "/sequence/" + series.getId();
                 String html = fetchString(urlStr);
                 List<Book> books = parseSeriesBooksFromHtml(html, series.getAuthor());
                 series.setBooks(books);
@@ -155,7 +152,7 @@ public class FlibustaApi {
         if (code >= 300 && code < 400) {
             String redirectUrl = conn.getHeaderField("Location");
             if (redirectUrl != null) {
-                return fetchString(redirectUrl.startsWith("http") ? redirectUrl : currentMirror + redirectUrl);
+                return fetchString(redirectUrl.startsWith("http") ? redirectUrl : BASE_URL + redirectUrl);
             }
         }
 
@@ -171,7 +168,7 @@ public class FlibustaApi {
         return sb.toString();
     }
 
-    private static List<Book> parseBooksFromOpds(String xml) {
+    public static List<Book> parseBooksFromOpds(String xml) {
         List<Book> list = new ArrayList<>();
         try {
             XmlPullParser parser = Xml.newPullParser();
@@ -186,7 +183,8 @@ public class FlibustaApi {
             String genre = "";
             String content = "";
             String bookId = "";
-            String dlUrl = "";
+            String coverUrl = "";
+            String size = "";
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 String name = parser.getName();
@@ -200,15 +198,23 @@ public class FlibustaApi {
                             genre = "";
                             content = "";
                             bookId = "";
-                            dlUrl = "";
+                            coverUrl = "";
+                            size = "";
                         } else if (insideEntry) {
                             if ("link".equals(currentTag)) {
                                 String href = parser.getAttributeValue(null, "href");
-                                if (href != null && href.contains("/b/")) {
-                                    Matcher m = Pattern.compile("/b/(\\d+)").matcher(href);
-                                    if (m.find() && bookId.isEmpty()) {
-                                        bookId = m.group(1);
-                                        dlUrl = currentMirror + "/b/" + bookId + "/fb2";
+                                String rel = parser.getAttributeValue(null, "rel");
+                                if (href != null) {
+                                    if (href.contains("/b/") && bookId.isEmpty()) {
+                                        Matcher m = Pattern.compile("/b/(\\d+)").matcher(href);
+                                        if (m.find()) {
+                                            bookId = m.group(1);
+                                        }
+                                    }
+                                    if (rel != null && (rel.contains("image") || rel.contains("thumbnail") || href.endsWith(".jpg") || href.endsWith(".png"))) {
+                                        if (coverUrl.isEmpty()) {
+                                            coverUrl = href.startsWith("http") ? href : BASE_URL + href;
+                                        }
                                     }
                                 }
                             } else if ("category".equals(currentTag)) {
@@ -234,6 +240,10 @@ public class FlibustaApi {
                                     author = text;
                                 } else if ("content".equals(currentTag) && content.isEmpty()) {
                                     content = text.replaceAll("<[^>]+>", " ").trim();
+                                    Matcher mSize = Pattern.compile("Размер:\\s*([0-9]+\\s*(?:Kb|Mb|Кб|Мб))", Pattern.CASE_INSENSITIVE).matcher(text);
+                                    if (mSize.find()) {
+                                        size = mSize.group(1);
+                                    }
                                 }
                             }
                         }
@@ -243,8 +253,11 @@ public class FlibustaApi {
                         if ("entry".equals(name != null ? name.toLowerCase() : "")) {
                             insideEntry = false;
                             if (!title.isEmpty() && !bookId.isEmpty()) {
+                                String dlUrl = BASE_URL + "/b/" + bookId + "/fb2";
                                 Book b = new Book(bookId, title, author.isEmpty() ? "Не указан" : author,
-                                        genre.isEmpty() ? "Художественная литература" : genre, "FB2", "fb2", dlUrl);
+                                        genre.isEmpty() ? "Художественная литература" : genre,
+                                        size.isEmpty() ? "FB2" : size, "fb2", dlUrl);
+                                b.setCoverUrl(coverUrl);
                                 b.setDescription(content);
                                 list.add(b);
                             }
@@ -346,7 +359,7 @@ public class FlibustaApi {
 
             if (bId != null && !seenIds.contains(bId) && !title.isEmpty()) {
                 seenIds.add(bId);
-                String dlUrl = currentMirror + "/b/" + bId + "/fb2";
+                String dlUrl = BASE_URL + "/b/" + bId + "/fb2";
                 list.add(new Book(bId, title, author, "Художественная литература", "FB2", "fb2", dlUrl));
             }
             if (list.size() >= 50) break;
@@ -387,7 +400,7 @@ public class FlibustaApi {
         while (matcher.find()) {
             String bId = matcher.group(1);
             String title = matcher.group(2).trim();
-            String dlUrl = currentMirror + "/b/" + bId + "/fb2";
+            String dlUrl = BASE_URL + "/b/" + bId + "/fb2";
 
             books.add(new Book(bId, idx + ". " + title, defaultAuthor, "В серии", "FB2", "fb2", dlUrl));
             idx++;

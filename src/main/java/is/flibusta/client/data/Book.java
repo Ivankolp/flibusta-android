@@ -10,10 +10,11 @@ public class Book implements Serializable {
     private String size;
     private String format;
     private String downloadUrl;
+    private String coverUrl;
+    private String description;
     private String status; // "Читаю", "Прочитано", "В планах"
     private String localPath;
     private String dateAdded;
-    private String description;
 
     public Book() {
     }
@@ -85,6 +86,22 @@ public class Book implements Serializable {
         this.downloadUrl = downloadUrl;
     }
 
+    public String getCoverUrl() {
+        return coverUrl;
+    }
+
+    public void setCoverUrl(String coverUrl) {
+        this.coverUrl = coverUrl;
+    }
+
+    public String getDescription() {
+        return description != null ? description : "";
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
     public String getStatus() {
         return status != null ? status : "В планах";
     }
@@ -107,13 +124,5 @@ public class Book implements Serializable {
 
     public void setDateAdded(String dateAdded) {
         this.dateAdded = dateAdded;
-    }
-
-    public String getDescription() {
-        return description != null ? description : "";
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
     }
 }
