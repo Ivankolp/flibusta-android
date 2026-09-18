@@ -108,24 +108,53 @@ public class FlibustaApi {
             try {
                 String encoded = URLEncoder.encode(authorName, "UTF-8");
 
-                // 1. Try author search via OPDS
+                // 1. Search in booksearch HTML to find author link /a/<id>
+                try {
+                    String htmlSearch = fetchString(BASE_URL + "/booksearch?ask=" + encoded + "&cha=on");
+                    Matcher mAuthor = Pattern.compile("<a\\s+href=[\"']/a/(\\d+)[\"']").matcher(htmlSearch);
+                    if (mAuthor.find()) {
+                        String authorId = mAuthor.group(1);
+                        String authorHtml = fetchString(BASE_URL + "/a/" + authorId);
+                        List<Book> authorBooks = parseAuthorPageBooks(authorHtml, authorName);
+                        if (!authorBooks.isEmpty()) {
+                            mainHandler.post(() -> callback.onSuccess(authorBooks));
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                // 2. Try OPDS author search
                 try {
                     String searchXml = fetchString(BASE_URL + "/opds/search?searchType=authors&searchTerm=" + encoded);
-                    Matcher m = Pattern.compile("/opds/author/(\\d+)").matcher(searchXml);
-                    if (m.find()) {
-                        String authorId = m.group(1);
+                    Matcher mAuthorId = Pattern.compile("/opds/author/(\\d+)").matcher(searchXml);
+                    if (mAuthorId.find()) {
+                        String authorId = mAuthorId.group(1);
                         String booksXml = fetchString(BASE_URL + "/opds/author/" + authorId + "/alphabet");
                         List<Book> opdsBooks = parseBooksFromOpds(booksXml);
                         if (!opdsBooks.isEmpty()) {
+                            for (Book b : opdsBooks) {
+                                if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                                        b.getAuthor().equalsIgnoreCase("Не указан") ||
+                                        b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                                    b.setAuthor(authorName);
+                                }
+                            }
                             mainHandler.post(() -> callback.onSuccess(opdsBooks));
                             return;
                         }
                     }
                 } catch (Exception ignored) {}
 
-                // 2. Fallback: search books by author name via HTML
-                String html = fetchString(BASE_URL + "/booksearch?ask=" + encoded);
+                // 3. Fallback: search books by author name via HTML
+                String html = fetchString(BASE_URL + "/booksearch?ask=" + encoded + "&chb=on");
                 List<Book> htmlBooks = parseBooksFromHtml(html);
+                for (Book b : htmlBooks) {
+                    if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                            b.getAuthor().equalsIgnoreCase("Не указан") ||
+                            b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                        b.setAuthor(authorName);
+                    }
+                }
                 mainHandler.post(() -> callback.onSuccess(htmlBooks));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e));
@@ -242,69 +271,51 @@ public class FlibustaApi {
 
     public static List<GenreItem> parseGenreItemsFromOpds(String xml) {
         List<GenreItem> list = new ArrayList<>();
-        try {
-            XmlPullParser parser = Xml.newPullParser();
-            parser.setInput(new StringReader(xml));
+        if (xml == null || xml.isEmpty()) return list;
 
-            int eventType = parser.getEventType();
-            boolean insideEntry = false;
-            String currentTag = "";
-            String title = "";
-            String content = "";
-            String href = "";
+        Matcher entryMatcher = Pattern.compile("<entry>.*?</entry>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE).matcher(xml);
+        while (entryMatcher.find()) {
+            String entry = entryMatcher.group();
+            Matcher tMatch = Pattern.compile("<title>([^<]+)</title>", Pattern.CASE_INSENSITIVE).matcher(entry);
+            Matcher cMatch = Pattern.compile("<content[^>]*>([^<]*)</content>", Pattern.CASE_INSENSITIVE).matcher(entry);
+            Matcher lMatch = Pattern.compile("<link[^>]+href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(entry);
 
-            while (eventType != XmlPullParser.END_DOCUMENT) {
-                String name = parser.getName();
-                switch (eventType) {
-                    case XmlPullParser.START_TAG:
-                        currentTag = name != null ? name.toLowerCase() : "";
-                        if ("entry".equals(currentTag)) {
-                            insideEntry = true;
-                            title = "";
-                            content = "";
-                            href = "";
-                        } else if (insideEntry && "link".equals(currentTag)) {
-                            String h = parser.getAttributeValue(null, "href");
-                            String rel = parser.getAttributeValue(null, "rel");
-                            if (h != null && (rel == null || !rel.contains("search"))) {
-                                if (href.isEmpty() || h.contains("/opds/genres/")) {
-                                    href = h;
-                                }
-                            }
-                        }
-                        break;
-
-                    case XmlPullParser.TEXT:
-                        if (insideEntry) {
-                            String text = parser.getText();
-                            if (text != null) {
-                                text = text.trim();
-                                if ("title".equals(currentTag) && title.isEmpty()) {
-                                    title = text;
-                                } else if ("content".equals(currentTag) && content.isEmpty()) {
-                                    content = text;
-                                }
-                            }
-                        }
-                        break;
-
-                    case XmlPullParser.END_TAG:
-                        if ("entry".equals(name != null ? name.toLowerCase() : "")) {
-                            insideEntry = false;
-                            if (!title.isEmpty() && !href.isEmpty()) {
-                                String fullUrl = href.startsWith("http") ? href : BASE_URL + href;
-                                boolean isLeaf = href.matches(".*/\\d+$");
-                                list.add(new GenreItem(title, fullUrl, content, isLeaf));
-                            }
-                        }
-                        currentTag = "";
-                        break;
-                }
-                eventType = parser.next();
+            if (tMatch.find() && lMatch.find()) {
+                String title = tMatch.group(1).trim();
+                String href = lMatch.group(1).trim();
+                String content = cMatch.find() ? cMatch.group(1).trim() : "";
+                String fullUrl = href.startsWith("http") ? href : BASE_URL + href;
+                boolean isLeaf = href.matches(".*/\\d+$");
+                list.add(new GenreItem(title, fullUrl, content, isLeaf));
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         }
+        return list;
+    }
+
+    public static List<Book> parseAuthorPageBooks(String html, String authorName) {
+        List<Book> list = new ArrayList<>();
+        Set<String> seenIds = new HashSet<>();
+
+        Pattern pattern = Pattern.compile("<input[^>]*name=[\"']?bchk(\\d+)[\"']?[^>]*>.*?<a\\s+href=[\"']/b/\\1[\"'][^>]*>(.*?)</a>(?:.*?<span\\s+style=size>([^<]+)</span>)?", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+
+        while (matcher.find()) {
+            String bId = matcher.group(1);
+            String title = matcher.group(2).replaceAll("<[^>]+>", "").trim();
+            String size = matcher.group(3) != null ? matcher.group(3).trim() : "FB2";
+
+            if (bId != null && !seenIds.contains(bId) && !title.isEmpty()) {
+                seenIds.add(bId);
+                String dlUrl = BASE_URL + "/b/" + bId + "/fb2";
+                Book b = new Book(bId, title, authorName, "Книга автора", size, "fb2", dlUrl);
+                try {
+                    b.setCoverUrl(BASE_URL + "/i/" + (Integer.parseInt(bId) % 100) + "/" + bId + "/cover.jpg");
+                } catch (Exception ignored) {}
+                list.add(b);
+            }
+            if (list.size() >= 100) break;
+        }
+
         return list;
     }
 
@@ -489,13 +500,13 @@ public class FlibustaApi {
         List<Book> list = new ArrayList<>();
         Set<String> seenIds = new HashSet<>();
 
-        Pattern pattern = Pattern.compile("<a\\s+href=\"/(?:b/)?(\\d+)\"[^>]*>([^<]+)</a>(?:\\s*-\\s*<a\\s+href=\"/a/\\d+\"[^>]*>([^<]+)</a>)?", Pattern.CASE_INSENSITIVE);
+        Pattern pattern = Pattern.compile("<a\\s+href=[\"']/(?:b/)?(\\d+)[\"'][^>]*>(.*?)</a>(?:\\s*-\\s*<a\\s+href=[\"']/a/\\d+[\"'][^>]*>(.*?)</a>)?", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(html);
 
         while (matcher.find()) {
             String bId = matcher.group(1);
-            String title = matcher.group(2).trim();
-            String author = matcher.group(3) != null ? matcher.group(3).trim() : "Не указан";
+            String title = matcher.group(2).replaceAll("<[^>]+>", "").trim();
+            String author = matcher.group(3) != null ? matcher.group(3).replaceAll("<[^>]+>", "").trim() : "Не указан";
 
             if (bId != null && !seenIds.contains(bId) && !title.isEmpty()) {
                 seenIds.add(bId);
@@ -512,12 +523,12 @@ public class FlibustaApi {
         List<Series> list = new ArrayList<>();
         Set<String> seenIds = new HashSet<>();
 
-        Pattern pattern = Pattern.compile("<a\\s+href=\"/(?:sequence|s)/(\\d+)\"[^>]*>([^<]+)</a>(?:\\s*\\((\\d+)\\))?", Pattern.CASE_INSENSITIVE);
+        Pattern pattern = Pattern.compile("<a\\s+href=[\"']/(?:sequence|s)/(\\d+)[\"'][^>]*>(.*?)</a>(?:\\s*\\((\\d+)\\))?", Pattern.CASE_INSENSITIVE);
         Matcher matcher = pattern.matcher(html);
 
         while (matcher.find()) {
             String sId = matcher.group(1);
-            String title = matcher.group(2).trim();
+            String title = matcher.group(2).replaceAll("<[^>]+>", "").trim();
             String countStr = matcher.group(3);
             int count = countStr != null ? Integer.parseInt(countStr) : 0;
 
@@ -533,13 +544,13 @@ public class FlibustaApi {
 
     private static List<Book> parseSeriesBooksFromHtml(String html, String defaultAuthor) {
         List<Book> books = new ArrayList<>();
-        Pattern pattern = Pattern.compile("<input[^>]*name=\"bchk(\\d+)\"[^>]*>.*?<a\\s+href=\"/b/\\1\"[^>]*>([^<]+)</a>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        Pattern pattern = Pattern.compile("<input[^>]*name=[\"']?bchk(\\d+)[\"']?[^>]*>.*?<a\\s+href=[\"']/b/\\1[\"'][^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
         Matcher matcher = pattern.matcher(html);
 
         int idx = 1;
         while (matcher.find()) {
             String bId = matcher.group(1);
-            String title = matcher.group(2).trim();
+            String title = matcher.group(2).replaceAll("<[^>]+>", "").trim();
             String dlUrl = BASE_URL + "/b/" + bId + "/fb2";
 
             books.add(new Book(bId, idx + ". " + title, defaultAuthor, "В серии", "FB2", "fb2", dlUrl));

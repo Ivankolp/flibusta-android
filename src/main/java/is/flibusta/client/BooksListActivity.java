@@ -56,6 +56,9 @@ public class BooksListActivity extends AppCompatActivity {
         genreUrl = intent.getStringExtra("genre_url");
         displayTitle = intent.getStringExtra("title");
         defaultAuthor = intent.getStringExtra("author");
+        if ((defaultAuthor == null || defaultAuthor.isEmpty()) && "author".equals(type)) {
+            defaultAuthor = query;
+        }
 
         initViews();
         loadData();
@@ -121,6 +124,17 @@ public class BooksListActivity extends AppCompatActivity {
                     rvBooks.setVisibility(View.GONE);
                     tvSubtitle.setVisibility(View.GONE);
                 } else {
+                    // Ensure author name is preserved for all books when viewing author's books
+                    if ("author".equals(type) && defaultAuthor != null && !defaultAuthor.isEmpty()) {
+                        for (Book b : books) {
+                            if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                                    b.getAuthor().equalsIgnoreCase("Не указан") ||
+                                    b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                                b.setAuthor(defaultAuthor);
+                            }
+                        }
+                    }
+
                     layoutEmpty.setVisibility(View.GONE);
                     rvBooks.setVisibility(View.VISIBLE);
                     adapter.updateList(books);

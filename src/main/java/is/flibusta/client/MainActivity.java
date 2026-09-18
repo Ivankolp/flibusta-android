@@ -226,7 +226,7 @@ public class MainActivity extends AppCompatActivity {
         rvGenresList = findViewById(R.id.rv_genres_list);
 
         rvGenresList.setLayoutManager(new LinearLayoutManager(this));
-        genreAdapter = new GenreAdapter(this, genresList);
+        genreAdapter = new GenreAdapter(this, new ArrayList<>());
         genreAdapter.setListener(genre -> {
             if (genre.isLeaf()) {
                 // Leaf genre: open BooksListActivity
@@ -269,7 +269,7 @@ public class MainActivity extends AppCompatActivity {
                 if (result != null && !result.isEmpty()) {
                     genresList.clear();
                     genresList.addAll(result);
-                    genreAdapter.updateList(genresList);
+                    genreAdapter.updateList(result);
                     rvGenresList.setVisibility(View.VISIBLE);
                 } else {
                     layoutGenresError.setVisibility(View.VISIBLE);

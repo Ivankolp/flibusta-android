@@ -27,7 +27,10 @@ public class GenreAdapter extends RecyclerView.Adapter<GenreAdapter.ViewHolder> 
 
     public GenreAdapter(Context context, List<GenreItem> genres) {
         this.context = context;
-        this.genres = genres != null ? genres : new ArrayList<>();
+        this.genres = new ArrayList<>();
+        if (genres != null) {
+            this.genres.addAll(genres);
+        }
     }
 
     public void setListener(OnGenreClickListener listener) {
@@ -35,9 +38,11 @@ public class GenreAdapter extends RecyclerView.Adapter<GenreAdapter.ViewHolder> 
     }
 
     public void updateList(List<GenreItem> newList) {
-        this.genres.clear();
-        if (newList != null) {
+        if (newList != null && newList != this.genres) {
+            this.genres.clear();
             this.genres.addAll(newList);
+        } else if (newList == null) {
+            this.genres.clear();
         }
         notifyDataSetChanged();
     }
