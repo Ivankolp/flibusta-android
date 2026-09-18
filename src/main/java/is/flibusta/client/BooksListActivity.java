@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import is.flibusta.client.adapter.BookAdapter;
 import is.flibusta.client.data.Book;
+import is.flibusta.client.data.BookPage;
 import is.flibusta.client.data.DatabaseHelper;
 import is.flibusta.client.network.BookDownloader;
 import is.flibusta.client.network.FlibustaApi;
@@ -42,14 +43,14 @@ public class BooksListActivity extends AppCompatActivity {
     private BookAdapter adapter;
     private DatabaseHelper db;
 
-    // Pagination
+    // Pagination via exact nextPageUrl from OPDS/HTML
     private LinearLayout layoutBooksPagination;
     private TextView tvBooksPageInfo;
     private ProgressBar pbBooksLoadMore;
     private TextView btnBooksLoadMore;
-    private int currentPage = 0;
+    private String currentNextPageUrl = null;
     private boolean isLoadingMore = false;
-    private boolean hasMorePages = true;
+    private int pageNumber = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,7 +128,7 @@ public class BooksListActivity extends AppCompatActivity {
             @Override
             public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
                 super.onScrolled(recyclerView, dx, dy);
-                if (dy > 0 && hasMorePages && !isLoadingMore) {
+                if (dy > 0 && currentNextPageUrl != null && !isLoadingMore) {
                     if (lm.findLastVisibleItemPosition() >= adapter.getItemCount() - 3) {
                         loadMoreData();
                     }
@@ -140,8 +141,8 @@ public class BooksListActivity extends AppCompatActivity {
     }
 
     private void loadData() {
-        currentPage = 0;
-        hasMorePages = true;
+        currentNextPageUrl = null;
+        pageNumber = 1;
         isLoadingMore = false;
 
         pbLoading.setVisibility(View.VISIBLE);
@@ -152,10 +153,11 @@ public class BooksListActivity extends AppCompatActivity {
             layoutBooksPagination.setVisibility(View.GONE);
         }
 
-        FlibustaApi.Callback<List<Book>> callback = new FlibustaApi.Callback<List<Book>>() {
+        FlibustaApi.Callback<BookPage> callback = new FlibustaApi.Callback<BookPage>() {
             @Override
-            public void onSuccess(List<Book> books) {
+            public void onSuccess(BookPage page) {
                 pbLoading.setVisibility(View.GONE);
+                List<Book> books = page != null ? page.getBooks() : null;
                 if (books == null || books.isEmpty()) {
                     layoutEmpty.setVisibility(View.VISIBLE);
                     rvBooks.setVisibility(View.GONE);
@@ -164,7 +166,8 @@ public class BooksListActivity extends AppCompatActivity {
                         layoutBooksPagination.setVisibility(View.GONE);
                     }
                 } else {
-                    // Ensure author name is preserved for all books when viewing author's books
+                    currentNextPageUrl = page.getNextPageUrl();
+
                     if ("author".equals(type) && defaultAuthor != null && !defaultAuthor.isEmpty()) {
                         for (Book b : books) {
                             if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
@@ -179,15 +182,14 @@ public class BooksListActivity extends AppCompatActivity {
                     rvBooks.setVisibility(View.VISIBLE);
                     adapter.updateList(books);
                     tvSubtitle.setVisibility(View.VISIBLE);
-                    tvSubtitle.setText("Книг: " + books.size());
+                    tvSubtitle.setText("Книг: " + adapter.getItemCount());
 
-                    if (books.size() >= 20) {
+                    if (currentNextPageUrl != null) {
                         layoutBooksPagination.setVisibility(View.VISIBLE);
                         tvBooksPageInfo.setText("Страница 1 • Книг: " + adapter.getItemCount());
                         btnBooksLoadMore.setVisibility(View.VISIBLE);
                     } else {
                         layoutBooksPagination.setVisibility(View.GONE);
-                        hasMorePages = false;
                     }
                 }
             }
@@ -204,15 +206,15 @@ public class BooksListActivity extends AppCompatActivity {
         };
 
         if ("series".equals(type) && seriesId != null) {
-            FlibustaApi.loadSeriesBooks(seriesId, 0, defaultAuthor, callback);
+            FlibustaApi.loadSeriesBooksPage(seriesId, null, defaultAuthor, callback);
         } else if ("genre".equals(type) && genreUrl != null) {
-            FlibustaApi.fetchBooksFromUrl(genreUrl, 0, callback);
+            FlibustaApi.fetchBooksPage(genreUrl, callback);
         } else if ("author".equals(type) && query != null) {
-            FlibustaApi.searchBooksByAuthor(query, 0, callback);
+            FlibustaApi.searchBooksByAuthorPage(query, null, callback);
         } else if ("genre_search".equals(type) && query != null) {
-            FlibustaApi.searchBooks(query, 0, callback);
+            FlibustaApi.searchBooksPage(query, null, callback);
         } else if (query != null) {
-            FlibustaApi.searchBooks(query, 0, callback);
+            FlibustaApi.searchBooksPage(query, null, callback);
         } else {
             pbLoading.setVisibility(View.GONE);
             layoutEmpty.setVisibility(View.VISIBLE);
@@ -220,30 +222,33 @@ public class BooksListActivity extends AppCompatActivity {
     }
 
     private void loadMoreData() {
-        if (isLoadingMore || !hasMorePages) return;
+        if (isLoadingMore || currentNextPageUrl == null || currentNextPageUrl.isEmpty()) return;
 
         isLoadingMore = true;
         pbBooksLoadMore.setVisibility(View.VISIBLE);
         btnBooksLoadMore.setEnabled(false);
 
-        int nextPage = currentPage + 1;
+        String urlToLoad = currentNextPageUrl;
 
-        FlibustaApi.Callback<List<Book>> callback = new FlibustaApi.Callback<List<Book>>() {
+        FlibustaApi.fetchBooksPage(urlToLoad, new FlibustaApi.Callback<BookPage>() {
             @Override
-            public void onSuccess(List<Book> moreBooks) {
+            public void onSuccess(BookPage nextPage) {
                 isLoadingMore = false;
                 pbBooksLoadMore.setVisibility(View.GONE);
                 btnBooksLoadMore.setEnabled(true);
 
+                List<Book> moreBooks = nextPage != null ? nextPage.getBooks() : null;
                 if (moreBooks == null || moreBooks.isEmpty()) {
-                    hasMorePages = false;
+                    currentNextPageUrl = null;
                     btnBooksLoadMore.setVisibility(View.GONE);
                     tvBooksPageInfo.setText("Все книги загружены • Всего: " + adapter.getItemCount());
                     Toast.makeText(BooksListActivity.this, "Все доступные книги загружены", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                currentPage = nextPage;
+                pageNumber++;
+                currentNextPageUrl = nextPage.getNextPageUrl();
+
                 if ("author".equals(type) && defaultAuthor != null && !defaultAuthor.isEmpty()) {
                     for (Book b : moreBooks) {
                         if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
@@ -256,10 +261,9 @@ public class BooksListActivity extends AppCompatActivity {
 
                 adapter.addBooks(moreBooks);
                 tvSubtitle.setText("Книг: " + adapter.getItemCount());
-                tvBooksPageInfo.setText("Страница " + (currentPage + 1) + " • Книг: " + adapter.getItemCount());
+                tvBooksPageInfo.setText("Страница " + pageNumber + " • Книг: " + adapter.getItemCount());
 
-                if (moreBooks.size() < 20) {
-                    hasMorePages = false;
+                if (currentNextPageUrl == null) {
                     btnBooksLoadMore.setVisibility(View.GONE);
                     tvBooksPageInfo.setText("Все книги загружены • Всего: " + adapter.getItemCount());
                 }
@@ -274,22 +278,6 @@ public class BooksListActivity extends AppCompatActivity {
                 btnBooksLoadMore.setEnabled(true);
                 Toast.makeText(BooksListActivity.this, "Не удалось загрузить следующую страницу", Toast.LENGTH_SHORT).show();
             }
-        };
-
-        if ("series".equals(type) && seriesId != null) {
-            FlibustaApi.loadSeriesBooks(seriesId, nextPage, defaultAuthor, callback);
-        } else if ("genre".equals(type) && genreUrl != null) {
-            FlibustaApi.fetchBooksFromUrl(genreUrl, nextPage, callback);
-        } else if ("author".equals(type) && query != null) {
-            FlibustaApi.searchBooksByAuthor(query, nextPage, callback);
-        } else if ("genre_search".equals(type) && query != null) {
-            FlibustaApi.searchBooks(query, nextPage, callback);
-        } else if (query != null) {
-            FlibustaApi.searchBooks(query, nextPage, callback);
-        } else {
-            isLoadingMore = false;
-            pbBooksLoadMore.setVisibility(View.GONE);
-            btnBooksLoadMore.setEnabled(true);
-        }
+        });
     }
 }
