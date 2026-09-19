@@ -124,10 +124,18 @@ public class BooksListActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(SeriesDownloaderService.ACTION_SERIES_PROGRESS);
-        filter.addAction(SeriesDownloaderService.ACTION_SERIES_COMPLETE);
-        registerReceiver(seriesProgressReceiver, filter);
+        try {
+            IntentFilter filter = new IntentFilter();
+            filter.addAction(SeriesDownloaderService.ACTION_SERIES_PROGRESS);
+            filter.addAction(SeriesDownloaderService.ACTION_SERIES_COMPLETE);
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(seriesProgressReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(seriesProgressReceiver, filter);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
 
         checkActiveSeriesDownload();
     }
@@ -304,6 +312,22 @@ public class BooksListActivity extends AppCompatActivity {
                 tvSubtitle.setText("Скачано книг: " + adapter.getItemCount());
             }
             return;
+        }
+
+        if (("series".equals(type) || "series_name".equals(type)) && !FlibustaApi.isOnline(this)) {
+            String targetSeries = seriesName != null ? seriesName : (query != null ? query : (displayTitle != null ? displayTitle.replace("Серия: ", "") : ""));
+            List<Book> offlineBooks = db.getBooksBySeries(targetSeries);
+            if (offlineBooks != null && !offlineBooks.isEmpty()) {
+                pbLoading.setVisibility(View.GONE);
+                BookSorter.sort(offlineBooks, currentSortMode);
+                layoutEmpty.setVisibility(View.GONE);
+                rvBooks.setVisibility(View.VISIBLE);
+                adapter.updateList(offlineBooks);
+                tvSubtitle.setVisibility(View.VISIBLE);
+                tvSubtitle.setText("Скачано книг: " + adapter.getItemCount());
+                Toast.makeText(this, "Офлайн-режим: показаны скачанные книги серии", Toast.LENGTH_SHORT).show();
+                return;
+            }
         }
 
         FlibustaApi.Callback<BookPage> callback = new FlibustaApi.Callback<BookPage>() {

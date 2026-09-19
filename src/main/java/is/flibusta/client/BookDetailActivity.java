@@ -213,12 +213,21 @@ public class BookDetailActivity extends AppCompatActivity {
             layoutSeries.setContentDescription("Серия: " + sName + (book.getSeriesNumber() > 0 ? ", книга " + book.getSeriesNumber() : "") + ". Нажмите, чтобы открыть все книги этой серии");
             layoutSeries.setOnClickListener(v -> {
                 Intent intent = new Intent(BookDetailActivity.this, BooksListActivity.class);
-                if (book.getSeriesId() != null && !book.getSeriesId().isEmpty()) {
+                List<Book> localSeriesBooks = db.getBooksBySeries(sName);
+                if ((localSeriesBooks != null && !localSeriesBooks.isEmpty()) && !FlibustaApi.isOnline(BookDetailActivity.this)) {
+                    intent.putExtra("type", "library_series");
+                    intent.putExtra("series_name", sName);
+                } else if (book.getSeriesId() != null && !book.getSeriesId().isEmpty()) {
                     intent.putExtra("type", "series");
                     intent.putExtra("series_id", book.getSeriesId());
+                    intent.putExtra("series_name", sName);
+                } else if (localSeriesBooks != null && !localSeriesBooks.isEmpty()) {
+                    intent.putExtra("type", "library_series");
+                    intent.putExtra("series_name", sName);
                 } else {
                     intent.putExtra("type", "series_name");
                     intent.putExtra("query", sName);
+                    intent.putExtra("series_name", sName);
                 }
                 intent.putExtra("author", book.getAuthor());
                 intent.putExtra("title", "Серия: " + sName);
