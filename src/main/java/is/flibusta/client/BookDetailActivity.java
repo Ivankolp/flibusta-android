@@ -11,6 +11,8 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.util.List;
+
 import is.flibusta.client.data.Book;
 import is.flibusta.client.data.DatabaseHelper;
 import is.flibusta.client.network.BookDownloader;
