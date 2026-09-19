@@ -546,6 +546,12 @@ public class FlibustaApi {
             String bookId = "";
             String coverUrl = "";
             String size = "";
+            String year = "";
+            String updatedDate = "";
+            String seriesName = "";
+            String seriesId = "";
+            int seriesNumber = 0;
+            int downloads = 0;
 
             while (eventType != XmlPullParser.END_DOCUMENT) {
                 String name = parser.getName();
@@ -562,12 +568,12 @@ public class FlibustaApi {
                             bookId = "";
                             coverUrl = "";
                             size = "";
-                            String year = "";
-                            String updatedDate = "";
-                            String seriesName = "";
-                            String seriesId = "";
-                            int seriesNumber = 0;
-                            int downloads = 0;
+                            year = "";
+                            updatedDate = "";
+                            seriesName = "";
+                            seriesId = "";
+                            seriesNumber = 0;
+                            downloads = 0;
                         } else if (insideEntry) {
                             if ("link".equals(currentTag)) {
                                 String href = parser.getAttributeValue(null, "href");
