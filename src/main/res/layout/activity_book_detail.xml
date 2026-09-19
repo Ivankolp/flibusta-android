@@ -137,6 +137,30 @@
                             android:textStyle="bold" />
                     </LinearLayout>
 
+                    <!-- Clickable Series View (if book belongs to a series) -->
+                    <LinearLayout
+                        android:id="@+id/layout_detail_series"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:background="@drawable/bg_badge"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center_vertical"
+                        android:minHeight="44dp"
+                        android:paddingStart="10dp"
+                        android:paddingEnd="10dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:id="@+id/tv_detail_series"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/accent_cyan"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+                    </LinearLayout>
+
                     <TextView
                         android:id="@+id/tv_detail_size"
                         android:layout_width="wrap_content"
@@ -259,14 +283,46 @@
                 android:textStyle="bold" />
 
             <!-- Annotation Section -->
-            <TextView
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="22dp"
-                android:text="Аннотация"
-                android:textColor="@color/text_primary"
-                android:textSize="15sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Аннотация"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <ProgressBar
+                    android:id="@+id/pb_detail_desc"
+                    android:layout_width="22dp"
+                    android:layout_height="22dp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/btn_detail_retry_desc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_badge"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:minHeight="44dp"
+                    android:gravity="center_vertical"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="Загрузить аннотацию"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:visibility="gone"
+                    android:contentDescription="Попробовать загрузить подробную аннотацию с сервера" />
+            </LinearLayout>
 
             <TextView
                 android:id="@+id/tv_detail_description"

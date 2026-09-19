@@ -34,6 +34,7 @@ public class BooksListActivity extends AppCompatActivity {
     private String type;
     private String query;
     private String seriesId;
+    private String seriesName;
     private String authorId;
     private String genreUrl;
     private String displayTitle;
@@ -107,6 +108,7 @@ public class BooksListActivity extends AppCompatActivity {
         type = intent.getStringExtra("type");
         query = intent.getStringExtra("query");
         seriesId = intent.getStringExtra("series_id");
+        seriesName = intent.getStringExtra("series_name");
         authorId = intent.getStringExtra("author_id");
         genreUrl = intent.getStringExtra("genre_url");
         displayTitle = intent.getStringExtra("title");
@@ -196,6 +198,11 @@ public class BooksListActivity extends AppCompatActivity {
                 tvSeriesProgress.setText("Запуск фоновой загрузки серии...");
                 Toast.makeText(this, "Запущена фоновая загрузка серии в память устройства", Toast.LENGTH_SHORT).show();
             });
+        } else if ("library_series".equals(type)) {
+            layoutSeriesAction.setVisibility(View.GONE);
+            currentSortMode = BookSorter.SortMode.SERIES_NUM_ASC;
+            btnSortSelector.setText(currentSortMode.getTitle());
+            btnSortSelector.setContentDescription("Выбрать сортировку списка книг. Текущая: " + currentSortMode.getTitle());
         }
 
         btnSortSelector.setOnClickListener(v -> showSortDialog());
@@ -278,6 +285,25 @@ public class BooksListActivity extends AppCompatActivity {
         rvBooks.setVisibility(View.GONE);
         if (layoutBooksPagination != null) {
             layoutBooksPagination.setVisibility(View.GONE);
+        }
+
+        if ("library_series".equals(type)) {
+            pbLoading.setVisibility(View.GONE);
+            String targetSeries = seriesName != null ? seriesName : (displayTitle != null ? displayTitle.replace("Серия: ", "") : "");
+            List<Book> books = db.getBooksBySeries(targetSeries);
+            if (books == null || books.isEmpty()) {
+                layoutEmpty.setVisibility(View.VISIBLE);
+                rvBooks.setVisibility(View.GONE);
+                tvSubtitle.setVisibility(View.GONE);
+            } else {
+                BookSorter.sort(books, currentSortMode);
+                layoutEmpty.setVisibility(View.GONE);
+                rvBooks.setVisibility(View.VISIBLE);
+                adapter.updateList(books);
+                tvSubtitle.setVisibility(View.VISIBLE);
+                tvSubtitle.setText("Скачано книг: " + adapter.getItemCount());
+            }
+            return;
         }
 
         FlibustaApi.Callback<BookPage> callback = new FlibustaApi.Callback<BookPage>() {

@@ -1,5 +1,8 @@
 package is.flibusta.client.network;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Xml;
@@ -468,8 +471,8 @@ public class FlibustaApi {
         URL url = new URL(urlString);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
-        conn.setConnectTimeout(8000);
-        conn.setReadTimeout(8000);
+        conn.setConnectTimeout(15000);
+        conn.setReadTimeout(15000);
         conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Android; Mobile) FlibustaReader/1.0");
         conn.setRequestProperty("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8");
 
@@ -1083,5 +1086,76 @@ public class FlibustaApi {
             if (list.size() >= 100) break;
         }
         return new BookPage(list, null);
+    }
+
+    public static boolean isOnline(Context context) {
+        if (context == null) return true;
+        try {
+            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                NetworkInfo netInfo = cm.getActiveNetworkInfo();
+                return netInfo != null && netInfo.isConnected();
+            }
+        } catch (Exception ignored) {}
+        return true;
+    }
+
+    public static class BookAnnotationResult {
+        public String annotation = "";
+        public String seriesId = "";
+        public String seriesName = "";
+        public int seriesNumber = 0;
+        public String coverUrl = "";
+    }
+
+    public static void fetchBookAnnotation(String bookId, Callback<BookAnnotationResult> callback) {
+        if (bookId == null || bookId.isEmpty()) {
+            mainHandler.post(() -> callback.onError(new Exception("Invalid bookId")));
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                String html = fetchString(BASE_URL + "/b/" + bookId);
+                BookAnnotationResult result = parseAnnotationFromHtml(html);
+                mainHandler.post(() -> callback.onSuccess(result));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static BookAnnotationResult parseAnnotationFromHtml(String html) {
+        BookAnnotationResult res = new BookAnnotationResult();
+        if (html == null || html.isEmpty()) return res;
+
+        // Parse annotation
+        Pattern pAnn = Pattern.compile("<h2>Аннотация</h2>\\s*(<p>.*?</p>|.*?(?=<br\\s*/?>\\s*<BR>|<hr|<form|<table|<h2>|$))", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+        Matcher mAnn = pAnn.matcher(html);
+        if (mAnn.find()) {
+            String raw = mAnn.group(1);
+            res.annotation = raw.replaceAll("<p>", "").replaceAll("</p>", "\n\n").replaceAll("<br\\s*/?>", "\n").replaceAll("<[^>]+>", "").trim();
+        }
+
+        // Parse series
+        Pattern pSeq = Pattern.compile("<a\\s+href=[\"']/s/(\\d+)[\"'][^>]*>(.*?)</a>(?:\\s*-\\s*(\\d+))?", Pattern.CASE_INSENSITIVE);
+        Matcher mSeq = pSeq.matcher(html);
+        if (mSeq.find()) {
+            res.seriesId = mSeq.group(1);
+            res.seriesName = mSeq.group(2).replaceAll("<[^>]+>", "").trim();
+            if (mSeq.group(3) != null) {
+                try {
+                    res.seriesNumber = Integer.parseInt(mSeq.group(3).trim());
+                } catch (Exception ignored) {}
+            }
+        }
+
+        // Parse cover
+        Pattern pCov = Pattern.compile("<img\\s+[^>]*src=[\"'](/i/[^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+        Matcher mCov = pCov.matcher(html);
+        if (mCov.find()) {
+            res.coverUrl = BASE_URL + mCov.group(1);
+        }
+
+        return res;
     }
 }

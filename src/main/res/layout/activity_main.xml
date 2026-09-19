@@ -83,34 +83,67 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="vertical"
-                android:padding="32dp"
+                android:padding="28dp"
                 android:visibility="gone">
 
                 <TextView
+                    android:id="@+id/tv_catalog_error_title"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:text="Не удалось загрузить каталог с Флибусты"
+                    android:text="Нет подключения к интернету"
+                    android:textColor="@color/accent_gold"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tv_catalog_error_desc"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center"
+                    android:lineSpacingExtra="3dp"
+                    android:text="Проверьте Wi-Fi или мобильную сеть, либо откройте скачанные книги из вашей библиотеки."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/btn_catalog_open_library"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:background="@drawable/bg_button_accent"
+                    android:clickable="true"
+                    android:contentDescription="Открыть скачанные книги из библиотеки"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minHeight="48dp"
+                    android:paddingStart="20dp"
+                    android:paddingEnd="20dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp"
+                    android:text="Открыть книги из библиотеки"
                     android:textColor="@color/text_primary"
-                    android:textSize="16sp"
+                    android:textSize="14sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/btn_catalog_retry"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:background="@drawable/bg_button_accent"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_button_secondary"
                     android:clickable="true"
                     android:contentDescription="Повторить загрузку каталога"
                     android:focusable="true"
+                    android:gravity="center"
                     android:minHeight="48dp"
                     android:paddingStart="20dp"
                     android:paddingEnd="20dp"
                     android:paddingTop="12dp"
                     android:paddingBottom="12dp"
                     android:text="Повторить попытку"
-                    android:textColor="@color/text_primary"
+                    android:textColor="@color/text_secondary"
                     android:textSize="14sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -934,6 +967,40 @@
                         android:textColor="@color/text_primary"
                         android:textSize="12sp"
                         android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/chip_lib_series"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_chip"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:text="По сериям"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:contentDescription="Фильтр: скачанные циклы и серии книг" />
+
+                    <TextView
+                        android:id="@+id/chip_lib_downloaded"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_chip"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:text="Скачано"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:contentDescription="Фильтр: только скачанные книги" />
 
                     <TextView
                         android:id="@+id/chip_lib_reading"

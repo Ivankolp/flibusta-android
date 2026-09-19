@@ -14,7 +14,7 @@ import java.util.Locale;
 
 public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "flibusta_library.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
 
     private static final String TABLE_LIBRARY = "library_books";
     private static final String COL_ID = "id";
@@ -27,6 +27,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     private static final String COL_STATUS = "status";
     private static final String COL_LOCAL_PATH = "local_path";
     private static final String COL_DATE_ADDED = "date_added";
+    private static final String COL_SERIES_NAME = "series_name";
+    private static final String COL_SERIES_ID = "series_id";
+    private static final String COL_SERIES_NUMBER = "series_number";
+    private static final String COL_DESCRIPTION = "description";
+    private static final String COL_COVER_URL = "cover_url";
 
     public DatabaseHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
@@ -44,14 +49,34 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 + COL_DOWNLOAD_URL + " TEXT, "
                 + COL_STATUS + " TEXT, "
                 + COL_LOCAL_PATH + " TEXT, "
-                + COL_DATE_ADDED + " TEXT)";
+                + COL_DATE_ADDED + " TEXT, "
+                + COL_SERIES_NAME + " TEXT, "
+                + COL_SERIES_ID + " TEXT, "
+                + COL_SERIES_NUMBER + " INTEGER DEFAULT 0, "
+                + COL_DESCRIPTION + " TEXT, "
+                + COL_COVER_URL + " TEXT)";
         db.execSQL(createTable);
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS " + TABLE_LIBRARY);
-        onCreate(db);
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE " + TABLE_LIBRARY + " ADD COLUMN " + COL_SERIES_NAME + " TEXT");
+            } catch (Exception ignored) {}
+            try {
+                db.execSQL("ALTER TABLE " + TABLE_LIBRARY + " ADD COLUMN " + COL_SERIES_ID + " TEXT");
+            } catch (Exception ignored) {}
+            try {
+                db.execSQL("ALTER TABLE " + TABLE_LIBRARY + " ADD COLUMN " + COL_SERIES_NUMBER + " INTEGER DEFAULT 0");
+            } catch (Exception ignored) {}
+            try {
+                db.execSQL("ALTER TABLE " + TABLE_LIBRARY + " ADD COLUMN " + COL_DESCRIPTION + " TEXT");
+            } catch (Exception ignored) {}
+            try {
+                db.execSQL("ALTER TABLE " + TABLE_LIBRARY + " ADD COLUMN " + COL_COVER_URL + " TEXT");
+            } catch (Exception ignored) {}
+        }
     }
 
     public synchronized boolean addBook(Book book) {
@@ -69,6 +94,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         String dateStr = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(new Date());
         cv.put(COL_DATE_ADDED, dateStr);
+
+        cv.put(COL_SERIES_NAME, book.getSeriesName());
+        cv.put(COL_SERIES_ID, book.getSeriesId());
+        cv.put(COL_SERIES_NUMBER, book.getSeriesNumber());
+        cv.put(COL_DESCRIPTION, book.getDescription());
+        cv.put(COL_COVER_URL, book.getCoverUrl());
 
         long result = db.insertWithOnConflict(TABLE_LIBRARY, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
         return result != -1;
@@ -102,6 +133,37 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         return exists;
     }
 
+    private Book readBookFromCursor(Cursor cursor) {
+        Book b = new Book();
+        b.setId(cursor.getString(cursor.getColumnIndexOrThrow(COL_ID)));
+        b.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_TITLE)));
+        b.setAuthor(cursor.getString(cursor.getColumnIndexOrThrow(COL_AUTHOR)));
+        b.setGenre(cursor.getString(cursor.getColumnIndexOrThrow(COL_GENRE)));
+        b.setSize(cursor.getString(cursor.getColumnIndexOrThrow(COL_SIZE)));
+        b.setFormat(cursor.getString(cursor.getColumnIndexOrThrow(COL_FORMAT)));
+        b.setDownloadUrl(cursor.getString(cursor.getColumnIndexOrThrow(COL_DOWNLOAD_URL)));
+        b.setStatus(cursor.getString(cursor.getColumnIndexOrThrow(COL_STATUS)));
+        b.setLocalPath(cursor.getString(cursor.getColumnIndexOrThrow(COL_LOCAL_PATH)));
+        b.setDateAdded(cursor.getString(cursor.getColumnIndexOrThrow(COL_DATE_ADDED)));
+
+        int sNameIdx = cursor.getColumnIndex(COL_SERIES_NAME);
+        if (sNameIdx != -1) b.setSeriesName(cursor.getString(sNameIdx));
+
+        int sIdIdx = cursor.getColumnIndex(COL_SERIES_ID);
+        if (sIdIdx != -1) b.setSeriesId(cursor.getString(sIdIdx));
+
+        int sNumIdx = cursor.getColumnIndex(COL_SERIES_NUMBER);
+        if (sNumIdx != -1) b.setSeriesNumber(cursor.getInt(sNumIdx));
+
+        int descIdx = cursor.getColumnIndex(COL_DESCRIPTION);
+        if (descIdx != -1) b.setDescription(cursor.getString(descIdx));
+
+        int coverIdx = cursor.getColumnIndex(COL_COVER_URL);
+        if (coverIdx != -1) b.setCoverUrl(cursor.getString(coverIdx));
+
+        return b;
+    }
+
     public synchronized List<Book> getBooks(String filterStatus) {
         List<Book> list = new ArrayList<>();
         SQLiteDatabase db = this.getReadableDatabase();
@@ -115,18 +177,56 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
         if (cursor.moveToFirst()) {
             do {
-                Book b = new Book();
-                b.setId(cursor.getString(cursor.getColumnIndexOrThrow(COL_ID)));
-                b.setTitle(cursor.getString(cursor.getColumnIndexOrThrow(COL_TITLE)));
-                b.setAuthor(cursor.getString(cursor.getColumnIndexOrThrow(COL_AUTHOR)));
-                b.setGenre(cursor.getString(cursor.getColumnIndexOrThrow(COL_GENRE)));
-                b.setSize(cursor.getString(cursor.getColumnIndexOrThrow(COL_SIZE)));
-                b.setFormat(cursor.getString(cursor.getColumnIndexOrThrow(COL_FORMAT)));
-                b.setDownloadUrl(cursor.getString(cursor.getColumnIndexOrThrow(COL_DOWNLOAD_URL)));
-                b.setStatus(cursor.getString(cursor.getColumnIndexOrThrow(COL_STATUS)));
-                b.setLocalPath(cursor.getString(cursor.getColumnIndexOrThrow(COL_LOCAL_PATH)));
-                b.setDateAdded(cursor.getString(cursor.getColumnIndexOrThrow(COL_DATE_ADDED)));
-                list.add(b);
+                list.add(readBookFromCursor(cursor));
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public synchronized List<Book> getDownloadedBooks() {
+        List<Book> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery("SELECT * FROM " + TABLE_LIBRARY + " WHERE " + COL_LOCAL_PATH + " IS NOT NULL AND TRIM(" + COL_LOCAL_PATH + ") != '' ORDER BY rowid DESC", null);
+        if (cursor.moveToFirst()) {
+            do {
+                list.add(readBookFromCursor(cursor));
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public synchronized List<Series> getDownloadedSeries() {
+        List<Series> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT " + COL_SERIES_NAME + ", " + COL_SERIES_ID + ", " + COL_AUTHOR + ", COUNT(*) as book_count FROM " + TABLE_LIBRARY
+                        + " WHERE " + COL_SERIES_NAME + " IS NOT NULL AND TRIM(" + COL_SERIES_NAME + ") != '' GROUP BY " + COL_SERIES_NAME + " ORDER BY " + COL_SERIES_NAME + " ASC",
+                null);
+        if (cursor.moveToFirst()) {
+            do {
+                String sName = cursor.getString(0);
+                String sId = cursor.getString(1);
+                String sAuth = cursor.getString(2);
+                int count = cursor.getInt(3);
+                Series s = new Series(sId != null ? sId : "", sName, sAuth != null ? sAuth : "Разные авторы", count);
+                list.add(s);
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public synchronized List<Book> getBooksBySeries(String seriesName) {
+        List<Book> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT * FROM " + TABLE_LIBRARY + " WHERE " + COL_SERIES_NAME + " = ? ORDER BY " + COL_SERIES_NUMBER + " ASC, " + COL_TITLE + " ASC",
+                new String[]{seriesName});
+        if (cursor.moveToFirst()) {
+            do {
+                list.add(readBookFromCursor(cursor));
             } while (cursor.moveToNext());
         }
         cursor.close();

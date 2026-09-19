@@ -54,6 +54,9 @@ public class MainActivity extends AppCompatActivity {
     // Catalog Tab
     private ProgressBar pbCatalogLoading;
     private LinearLayout layoutCatalogError;
+    private TextView tvCatalogErrorTitle;
+    private TextView tvCatalogErrorDesc;
+    private TextView btnCatalogOpenLibrary;
     private TextView btnCatalogRetry;
     private ScrollView scrollCatalogContent;
     private View cardFeatured;
@@ -122,12 +125,15 @@ public class MainActivity extends AppCompatActivity {
 
     // Library Tab
     private TextView chipLibAll;
+    private TextView chipLibSeries;
+    private TextView chipLibDownloaded;
     private TextView chipLibReading;
     private TextView chipLibDone;
     private TextView chipLibPlanned;
     private LinearLayout layoutLibraryEmpty;
     private RecyclerView rvLibraryBooks;
     private LibraryAdapter libraryAdapter;
+    private SeriesAdapter librarySeriesAdapter;
     private String currentLibFilter = "Все";
 
     @Override
@@ -171,8 +177,15 @@ public class MainActivity extends AppCompatActivity {
     private void setupCatalogTab() {
         pbCatalogLoading = findViewById(R.id.pb_catalog_loading);
         layoutCatalogError = findViewById(R.id.layout_catalog_error);
+        tvCatalogErrorTitle = findViewById(R.id.tv_catalog_error_title);
+        tvCatalogErrorDesc = findViewById(R.id.tv_catalog_error_desc);
+        btnCatalogOpenLibrary = findViewById(R.id.btn_catalog_open_library);
         btnCatalogRetry = findViewById(R.id.btn_catalog_retry);
         scrollCatalogContent = findViewById(R.id.scroll_catalog_content);
+
+        if (btnCatalogOpenLibrary != null) {
+            btnCatalogOpenLibrary.setOnClickListener(v -> bottomNav.setSelectedItemId(R.id.nav_library));
+        }
 
         cardFeatured = findViewById(R.id.card_featured);
         ivFeaturedCover = findViewById(R.id.iv_featured_cover);
@@ -431,6 +444,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadLiveCatalog() {
+        if (!FlibustaApi.isOnline(this)) {
+            pbCatalogLoading.setVisibility(View.GONE);
+            scrollCatalogContent.setVisibility(View.GONE);
+            layoutCatalogError.setVisibility(View.VISIBLE);
+            if (tvCatalogErrorTitle != null) tvCatalogErrorTitle.setText("Нет подключения к интернету");
+            if (tvCatalogErrorDesc != null) tvCatalogErrorDesc.setText("Проверьте Wi-Fi или мобильную сеть, либо откройте скачанные книги из вашей библиотеки.");
+            Toast.makeText(this, "Нет подключения к интернету. Доступна ваша библиотека", Toast.LENGTH_LONG).show();
+            return;
+        }
+
         pbCatalogLoading.setVisibility(View.VISIBLE);
         scrollCatalogContent.setVisibility(View.GONE);
         layoutCatalogError.setVisibility(View.GONE);
@@ -483,6 +506,13 @@ public class MainActivity extends AppCompatActivity {
                 pbCatalogLoading.setVisibility(View.GONE);
                 scrollCatalogContent.setVisibility(View.GONE);
                 layoutCatalogError.setVisibility(View.VISIBLE);
+                if (!FlibustaApi.isOnline(MainActivity.this)) {
+                    if (tvCatalogErrorTitle != null) tvCatalogErrorTitle.setText("Нет подключения к интернету");
+                    if (tvCatalogErrorDesc != null) tvCatalogErrorDesc.setText("Проверьте Wi-Fi или мобильную сеть, либо откройте скачанные книги из вашей библиотеки.");
+                } else {
+                    if (tvCatalogErrorTitle != null) tvCatalogErrorTitle.setText("Сервер Флибусты не отвечает");
+                    if (tvCatalogErrorDesc != null) tvCatalogErrorDesc.setText("Не удалось получить каталог с сервера. Попробуйте ещё раз или почитайте книги с вашей полки.");
+                }
             }
         });
     }
@@ -760,6 +790,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupLibraryTab() {
         chipLibAll = findViewById(R.id.chip_lib_all);
+        chipLibSeries = findViewById(R.id.chip_lib_series);
+        chipLibDownloaded = findViewById(R.id.chip_lib_downloaded);
         chipLibReading = findViewById(R.id.chip_lib_reading);
         chipLibDone = findViewById(R.id.chip_lib_done);
         chipLibPlanned = findViewById(R.id.chip_lib_planned);
@@ -769,9 +801,27 @@ public class MainActivity extends AppCompatActivity {
         rvLibraryBooks.setLayoutManager(new LinearLayoutManager(this));
         libraryAdapter = new LibraryAdapter(this, null, this::refreshLibrary);
         libraryAdapter.setClickListener(this::openBookDetailActivity);
+
+        librarySeriesAdapter = new SeriesAdapter(this, null);
+        librarySeriesAdapter.setListener(series -> {
+            if (series == null) return;
+            Intent intent = new Intent(this, BooksListActivity.class);
+            intent.putExtra("type", "library_series");
+            intent.putExtra("series_name", series.getTitle());
+            intent.putExtra("author", series.getAuthor());
+            intent.putExtra("title", "Серия: " + series.getTitle());
+            startActivity(intent);
+        });
+
         rvLibraryBooks.setAdapter(libraryAdapter);
 
         chipLibAll.setOnClickListener(v -> setLibraryFilter("Все", chipLibAll));
+        if (chipLibSeries != null) {
+            chipLibSeries.setOnClickListener(v -> setLibraryFilter("По сериям", chipLibSeries));
+        }
+        if (chipLibDownloaded != null) {
+            chipLibDownloaded.setOnClickListener(v -> setLibraryFilter("Скачано", chipLibDownloaded));
+        }
         chipLibReading.setOnClickListener(v -> setLibraryFilter("Читаю", chipLibReading));
         chipLibDone.setOnClickListener(v -> setLibraryFilter("Прочитано", chipLibDone));
         chipLibPlanned.setOnClickListener(v -> setLibraryFilter("В планах", chipLibPlanned));
@@ -786,8 +836,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void setLibraryFilter(String filter, TextView activeChip) {
         currentLibFilter = filter;
-        TextView[] chips = {chipLibAll, chipLibReading, chipLibDone, chipLibPlanned};
+        TextView[] chips = {chipLibAll, chipLibSeries, chipLibDownloaded, chipLibReading, chipLibDone, chipLibPlanned};
         for (TextView c : chips) {
+            if (c == null) continue;
             if (c == activeChip) {
                 c.setBackgroundResource(R.drawable.bg_chip_selected);
                 c.setTextColor(getResources().getColor(R.color.text_primary));
@@ -800,8 +851,32 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshLibrary() {
-        List<Book> books = db.getBooks(currentLibFilter);
-        if (books.isEmpty()) {
+        if ("По сериям".equals(currentLibFilter)) {
+            if (btnLibSort != null) btnLibSort.setVisibility(View.GONE);
+            rvLibraryBooks.setAdapter(librarySeriesAdapter);
+            List<Series> seriesList = db.getDownloadedSeries();
+            if (seriesList == null || seriesList.isEmpty()) {
+                layoutLibraryEmpty.setVisibility(View.VISIBLE);
+                rvLibraryBooks.setVisibility(View.GONE);
+            } else {
+                layoutLibraryEmpty.setVisibility(View.GONE);
+                rvLibraryBooks.setVisibility(View.VISIBLE);
+                librarySeriesAdapter.updateList(seriesList);
+            }
+            return;
+        }
+
+        if (btnLibSort != null) btnLibSort.setVisibility(View.VISIBLE);
+        rvLibraryBooks.setAdapter(libraryAdapter);
+
+        List<Book> books;
+        if ("Скачано".equals(currentLibFilter)) {
+            books = db.getDownloadedBooks();
+        } else {
+            books = db.getBooks(currentLibFilter);
+        }
+
+        if (books == null || books.isEmpty()) {
             layoutLibraryEmpty.setVisibility(View.VISIBLE);
             rvLibraryBooks.setVisibility(View.GONE);
         } else {

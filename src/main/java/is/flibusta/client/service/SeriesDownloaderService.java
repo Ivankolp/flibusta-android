@@ -159,7 +159,7 @@ public class SeriesDownloaderService extends Service {
                 broadcastProgress(seriesId, current, total, book.getTitle());
 
                 // Download individual book
-                downloadSingleBook(book, seriesDir, current, db);
+                downloadSingleBook(book, seriesId, seriesTitle, seriesDir, current, db);
             }
 
             notifyCompletion(seriesTitle, String.format(Locale.US, "Серия успешно скачана! Все %d книг сохранены в папку Flibusta.", total), total);
@@ -179,13 +179,13 @@ public class SeriesDownloaderService extends Service {
     private List<Book> loadAllBooksSync(String seriesId, String defaultAuthor) {
         final List<Book> result = new ArrayList<>();
         final Object lock = new Object();
-        final boolean[] done = {false};
+        final boolean[] done = new boolean[]{false};
 
         FlibustaApi.fetchAllSeriesBooks(seriesId, defaultAuthor, new FlibustaApi.Callback<List<Book>>() {
             @Override
             public void onSuccess(List<Book> books) {
-                if (books != null) result.addAll(books);
                 synchronized (lock) {
+                    if (books != null) result.addAll(books);
                     done[0] = true;
                     lock.notifyAll();
                 }
@@ -211,7 +211,7 @@ public class SeriesDownloaderService extends Service {
         return result;
     }
 
-    private void downloadSingleBook(Book book, File seriesDir, int index, DatabaseHelper db) {
+    private void downloadSingleBook(Book book, String seriesId, String seriesTitle, File seriesDir, int index, DatabaseHelper db) {
         File targetFile = null;
         try {
             String safeTitle = book.getTitle().replaceAll("[\\\\/*?:\"<>|]", "_").trim();
@@ -232,6 +232,9 @@ public class SeriesDownloaderService extends Service {
             book.setLocalPath(targetFile.getAbsolutePath());
             book.setFormat("fb2");
             book.setStatus("Скачано");
+            if (seriesId != null && !seriesId.isEmpty()) book.setSeriesId(seriesId);
+            if (seriesTitle != null && !seriesTitle.isEmpty()) book.setSeriesName(seriesTitle);
+            if (book.getSeriesNumber() <= 0) book.setSeriesNumber(index);
             db.addBook(book);
 
         } catch (Exception e) {

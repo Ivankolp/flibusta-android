@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -13,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import is.flibusta.client.data.Book;
 import is.flibusta.client.data.DatabaseHelper;
 import is.flibusta.client.network.BookDownloader;
+import is.flibusta.client.network.FlibustaApi;
 import is.flibusta.client.network.ImageLoader;
 
 public class BookDetailActivity extends AppCompatActivity {
@@ -26,9 +28,13 @@ public class BookDetailActivity extends AppCompatActivity {
     private TextView tvGenre;
     private TextView tvSize;
     private TextView tvDescription;
+    private ProgressBar pbDetailDesc;
+    private TextView btnDetailRetryDesc;
 
     private View layoutAuthor;
     private View layoutGenre;
+    private View layoutSeries;
+    private TextView tvSeries;
 
     private TextView btnDownloadFb2;
     private TextView btnDownloadEpub;
@@ -64,9 +70,13 @@ public class BookDetailActivity extends AppCompatActivity {
         tvGenre = findViewById(R.id.tv_detail_genre);
         tvSize = findViewById(R.id.tv_detail_size);
         tvDescription = findViewById(R.id.tv_detail_description);
+        pbDetailDesc = findViewById(R.id.pb_detail_desc);
+        btnDetailRetryDesc = findViewById(R.id.btn_detail_retry_desc);
 
         layoutAuthor = findViewById(R.id.layout_detail_author);
         layoutGenre = findViewById(R.id.layout_detail_genre);
+        layoutSeries = findViewById(R.id.layout_detail_series);
+        tvSeries = findViewById(R.id.tv_detail_series);
 
         btnDownloadFb2 = findViewById(R.id.btn_detail_download_fb2);
         btnDownloadEpub = findViewById(R.id.btn_detail_download_epub);
@@ -88,11 +98,24 @@ public class BookDetailActivity extends AppCompatActivity {
             tvSize.setVisibility(View.GONE);
         }
 
+        updateSeriesView();
+
         String desc = book.getDescription();
-        if (desc != null && !desc.trim().isEmpty()) {
+        boolean hasDetailedDesc = desc != null && !desc.trim().isEmpty() && desc.trim().length() > 50 && !desc.trim().startsWith("Размер:");
+        if (hasDetailedDesc) {
             tvDescription.setText(desc);
+            if (btnDetailRetryDesc != null) btnDetailRetryDesc.setVisibility(View.GONE);
         } else {
-            tvDescription.setText("Аннотация отсутствует для этого издания на сервере Флибусты.");
+            if (desc != null && !desc.trim().isEmpty()) {
+                tvDescription.setText(desc);
+            } else {
+                tvDescription.setText("Загрузка аннотации с Флибусты...");
+            }
+            loadAnnotation();
+        }
+
+        if (btnDetailRetryDesc != null) {
+            btnDetailRetryDesc.setOnClickListener(v -> loadAnnotation());
         }
 
         ImageLoader.loadCover(ivCover, book.getCoverUrl());
@@ -175,5 +198,88 @@ public class BookDetailActivity extends AppCompatActivity {
             btnToLibrary.setTextColor(getResources().getColor(R.color.text_secondary));
             btnToLibrary.setContentDescription("Добавить книгу в библиотеку на полку");
         }
+    }
+
+    private void updateSeriesView() {
+        if (layoutSeries == null || tvSeries == null) return;
+        String sName = book.getSeriesName();
+        if (sName != null && !sName.trim().isEmpty()) {
+            layoutSeries.setVisibility(View.VISIBLE);
+            String text = "Серия: " + sName;
+            if (book.getSeriesNumber() > 0) {
+                text += " (книга " + book.getSeriesNumber() + ")";
+            }
+            tvSeries.setText(text);
+            layoutSeries.setContentDescription("Серия: " + sName + (book.getSeriesNumber() > 0 ? ", книга " + book.getSeriesNumber() : "") + ". Нажмите, чтобы открыть все книги этой серии");
+            layoutSeries.setOnClickListener(v -> {
+                Intent intent = new Intent(BookDetailActivity.this, BooksListActivity.class);
+                if (book.getSeriesId() != null && !book.getSeriesId().isEmpty()) {
+                    intent.putExtra("type", "series");
+                    intent.putExtra("series_id", book.getSeriesId());
+                } else {
+                    intent.putExtra("type", "series_name");
+                    intent.putExtra("query", sName);
+                }
+                intent.putExtra("author", book.getAuthor());
+                intent.putExtra("title", "Серия: " + sName);
+                startActivity(intent);
+            });
+        } else {
+            layoutSeries.setVisibility(View.GONE);
+        }
+    }
+
+    private void loadAnnotation() {
+        if (!FlibustaApi.isOnline(this)) {
+            if (pbDetailDesc != null) pbDetailDesc.setVisibility(View.GONE);
+            if (btnDetailRetryDesc != null) btnDetailRetryDesc.setVisibility(View.VISIBLE);
+            if (tvDescription != null && tvDescription.getText().toString().contains("Загрузка")) {
+                tvDescription.setText("Аннотация недоступна в офлайн-режиме (нет подключения к интернету).");
+            }
+            return;
+        }
+
+        if (pbDetailDesc != null) pbDetailDesc.setVisibility(View.VISIBLE);
+        if (btnDetailRetryDesc != null) btnDetailRetryDesc.setVisibility(View.GONE);
+
+        FlibustaApi.fetchBookAnnotation(book.getId(), new FlibustaApi.Callback<FlibustaApi.BookAnnotationResult>() {
+            @Override
+            public void onSuccess(FlibustaApi.BookAnnotationResult result) {
+                if (pbDetailDesc != null) pbDetailDesc.setVisibility(View.GONE);
+                if (result != null) {
+                    if (result.annotation != null && !result.annotation.trim().isEmpty()) {
+                        tvDescription.setText(result.annotation);
+                        book.setDescription(result.annotation);
+                    } else if (tvDescription.getText().toString().contains("Загрузка")) {
+                        tvDescription.setText("Аннотация отсутствует для этого издания на сервере Флибусты.");
+                    }
+
+                    if ((book.getSeriesName() == null || book.getSeriesName().isEmpty()) && result.seriesName != null && !result.seriesName.isEmpty()) {
+                        book.setSeriesName(result.seriesName);
+                        book.setSeriesId(result.seriesId);
+                        book.setSeriesNumber(result.seriesNumber);
+                        updateSeriesView();
+                    }
+
+                    if ((book.getCoverUrl() == null || book.getCoverUrl().isEmpty()) && result.coverUrl != null && !result.coverUrl.isEmpty()) {
+                        book.setCoverUrl(result.coverUrl);
+                        ImageLoader.loadCover(ivCover, result.coverUrl);
+                    }
+
+                    if (db.isBookInLibrary(book.getId())) {
+                        db.addBook(book);
+                    }
+                }
+            }
+
+            @Override
+            public void onError(Exception e) {
+                if (pbDetailDesc != null) pbDetailDesc.setVisibility(View.GONE);
+                if (btnDetailRetryDesc != null) btnDetailRetryDesc.setVisibility(View.VISIBLE);
+                if (tvDescription != null && tvDescription.getText().toString().contains("Загрузка")) {
+                    tvDescription.setText("Не удалось загрузить подробную аннотацию с сервера.");
+                }
+            }
+        });
     }
 }
