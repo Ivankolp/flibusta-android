@@ -1,6 +1,9 @@
 package is.flibusta.client;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageButton;
@@ -9,6 +12,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -19,6 +23,8 @@ import is.flibusta.client.data.BookPage;
 import is.flibusta.client.data.DatabaseHelper;
 import is.flibusta.client.network.BookDownloader;
 import is.flibusta.client.network.FlibustaApi;
+import is.flibusta.client.service.SeriesDownloaderService;
+import is.flibusta.client.util.BookSorter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,10 +47,20 @@ public class BooksListActivity extends AppCompatActivity {
     private LinearLayout layoutEmpty;
     private RecyclerView rvBooks;
 
+    // Sorting & Series Download Controls
+    private TextView btnSortSelector;
+    private LinearLayout layoutSeriesAction;
+    private TextView btnDownloadSeries;
+    private LinearLayout layoutSeriesProgress;
+    private TextView tvSeriesProgress;
+    private ProgressBar pbSeriesDownload;
+
+    private BookSorter.SortMode currentSortMode = BookSorter.SortMode.DATE_DESC;
+
     private BookAdapter adapter;
     private DatabaseHelper db;
 
-    // Pagination via exact nextPageUrl from OPDS/HTML
+    // Pagination
     private LinearLayout layoutBooksPagination;
     private TextView tvBooksPageInfo;
     private ProgressBar pbBooksLoadMore;
@@ -52,6 +68,33 @@ public class BooksListActivity extends AppCompatActivity {
     private String currentNextPageUrl = null;
     private boolean isLoadingMore = false;
     private int pageNumber = 1;
+
+    private final BroadcastReceiver seriesProgressReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
+            String action = intent.getAction();
+            String sId = intent.getStringExtra(SeriesDownloaderService.EXTRA_SERIES_ID);
+
+            if (seriesId != null && seriesId.equals(sId)) {
+                if (SeriesDownloaderService.ACTION_SERIES_PROGRESS.equals(action)) {
+                    int current = intent.getIntExtra("current", 0);
+                    int total = intent.getIntExtra("total", 0);
+                    String bookTitle = intent.getStringExtra("book_title");
+
+                    layoutSeriesProgress.setVisibility(View.VISIBLE);
+                    pbSeriesDownload.setMax(total);
+                    pbSeriesDownload.setProgress(current);
+                    tvSeriesProgress.setText(String.format("Скачивание: %d из %d (%d%%): %s", current, total, (total > 0 ? (current * 100) / total : 0), bookTitle != null ? bookTitle : ""));
+                } else if (SeriesDownloaderService.ACTION_SERIES_COMPLETE.equals(action)) {
+                    int total = intent.getIntExtra("total", 0);
+                    layoutSeriesProgress.setVisibility(View.GONE);
+                    Toast.makeText(BooksListActivity.this, "Серия скачана! Все " + total + " книг сохранены.", Toast.LENGTH_LONG).show();
+                    btnDownloadSeries.setText("Серия скачана (все книги)");
+                }
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -76,6 +119,36 @@ public class BooksListActivity extends AppCompatActivity {
         loadData();
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(SeriesDownloaderService.ACTION_SERIES_PROGRESS);
+        filter.addAction(SeriesDownloaderService.ACTION_SERIES_COMPLETE);
+        registerReceiver(seriesProgressReceiver, filter);
+
+        checkActiveSeriesDownload();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        try {
+            unregisterReceiver(seriesProgressReceiver);
+        } catch (Exception ignored) {}
+    }
+
+    private void checkActiveSeriesDownload() {
+        if ("series".equals(type) && seriesId != null && SeriesDownloaderService.isDownloading(seriesId)) {
+            layoutSeriesProgress.setVisibility(View.VISIBLE);
+            int current = SeriesDownloaderService.getProgress(seriesId);
+            int total = SeriesDownloaderService.getTotal(seriesId);
+            pbSeriesDownload.setMax(total);
+            pbSeriesDownload.setProgress(current);
+            tvSeriesProgress.setText(String.format("Скачивание: %d из %d (%d%%)...", current, total, total > 0 ? (current * 100) / total : 0));
+        }
+    }
+
     private void initViews() {
         ImageButton btnBack = findViewById(R.id.btn_list_back);
         btnBack.setOnClickListener(v -> finish());
@@ -88,6 +161,14 @@ public class BooksListActivity extends AppCompatActivity {
         layoutEmpty = findViewById(R.id.layout_list_empty);
         rvBooks = findViewById(R.id.rv_books_list);
 
+        // Sorting & Series Download views
+        btnSortSelector = findViewById(R.id.btn_sort_selector);
+        layoutSeriesAction = findViewById(R.id.layout_series_action);
+        btnDownloadSeries = findViewById(R.id.btn_download_series);
+        layoutSeriesProgress = findViewById(R.id.layout_series_progress);
+        tvSeriesProgress = findViewById(R.id.tv_series_progress);
+        pbSeriesDownload = findViewById(R.id.pb_series_download);
+
         // Pagination views
         layoutBooksPagination = findViewById(R.id.layout_books_pagination);
         tvBooksPageInfo = findViewById(R.id.tv_books_page_info);
@@ -99,6 +180,25 @@ public class BooksListActivity extends AppCompatActivity {
         } else {
             tvTitle.setText("Список книг");
         }
+
+        // Setup series actions
+        if ("series".equals(type) && seriesId != null) {
+            layoutSeriesAction.setVisibility(View.VISIBLE);
+            currentSortMode = BookSorter.SortMode.SERIES_NUM_ASC;
+            btnSortSelector.setText(currentSortMode.getTitle());
+            btnSortSelector.setContentDescription("Выбрать сортировку списка книг. Текущая: " + currentSortMode.getTitle());
+
+            btnDownloadSeries.setOnClickListener(v -> {
+                List<Book> loaded = adapter != null ? adapter.getBooks() : null;
+                ArrayList<Book> passBooks = (loaded != null && !loaded.isEmpty()) ? new ArrayList<>(loaded) : null;
+                SeriesDownloaderService.startDownload(this, seriesId, displayTitle, defaultAuthor, passBooks);
+                layoutSeriesProgress.setVisibility(View.VISIBLE);
+                tvSeriesProgress.setText("Запуск фоновой загрузки серии...");
+                Toast.makeText(this, "Запущена фоновая загрузка серии в память устройства", Toast.LENGTH_SHORT).show();
+            });
+        }
+
+        btnSortSelector.setOnClickListener(v -> showSortDialog());
 
         LinearLayoutManager lm = new LinearLayoutManager(this);
         rvBooks.setLayoutManager(lm);
@@ -125,7 +225,7 @@ public class BooksListActivity extends AppCompatActivity {
         });
         rvBooks.setAdapter(adapter);
 
-        // Scroll listener for smooth infinite scrolling
+        // Infinite scroll listener
         rvBooks.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
@@ -140,6 +240,31 @@ public class BooksListActivity extends AppCompatActivity {
 
         btnRetry.setOnClickListener(v -> loadData());
         btnBooksLoadMore.setOnClickListener(v -> loadMoreData());
+    }
+
+    private void showSortDialog() {
+        BookSorter.SortMode[] modes = BookSorter.SortMode.values();
+        String[] titles = new String[modes.length];
+        int selectedIndex = 0;
+        for (int i = 0; i < modes.length; i++) {
+            titles[i] = modes[i].getTitle();
+            if (modes[i] == currentSortMode) {
+                selectedIndex = i;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Сортировка списка")
+                .setSingleChoiceItems(titles, selectedIndex, (dialog, which) -> {
+                    currentSortMode = modes[which];
+                    btnSortSelector.setText(currentSortMode.getTitle());
+                    btnSortSelector.setContentDescription("Выбрать сортировку списка книг. Текущая: " + currentSortMode.getTitle());
+                    adapter.sort(currentSortMode);
+                    dialog.dismiss();
+                    Toast.makeText(BooksListActivity.this, "Применена сортировка: " + currentSortMode.getTitle(), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
     }
 
     private void loadData() {
@@ -180,11 +305,18 @@ public class BooksListActivity extends AppCompatActivity {
                         }
                     }
 
+                    // Apply current sort mode
+                    BookSorter.sort(books, currentSortMode);
+
                     layoutEmpty.setVisibility(View.GONE);
                     rvBooks.setVisibility(View.VISIBLE);
                     adapter.updateList(books);
                     tvSubtitle.setVisibility(View.VISIBLE);
                     tvSubtitle.setText("Книг: " + adapter.getItemCount());
+
+                    if (btnDownloadSeries != null && "series".equals(type)) {
+                        btnDownloadSeries.setText(String.format("Скачать всю серию целиком (%d книг)", adapter.getItemCount()));
+                    }
 
                     if (currentNextPageUrl != null) {
                         layoutBooksPagination.setVisibility(View.VISIBLE);
@@ -249,35 +381,35 @@ public class BooksListActivity extends AppCompatActivity {
                 List<Book> moreBooks = nextPage != null ? nextPage.getBooks() : null;
                 if (moreBooks == null || moreBooks.isEmpty()) {
                     currentNextPageUrl = null;
-                    btnBooksLoadMore.setVisibility(View.GONE);
-                    tvBooksPageInfo.setText("Все книги загружены • Всего: " + adapter.getItemCount());
-                    Toast.makeText(BooksListActivity.this, "Все доступные книги загружены", Toast.LENGTH_SHORT).show();
-                    return;
-                }
+                    layoutBooksPagination.setVisibility(View.GONE);
+                } else {
+                    currentNextPageUrl = nextPage.getNextPageUrl();
+                    pageNumber++;
 
-                pageNumber++;
-                currentNextPageUrl = nextPage.getNextPageUrl();
-
-                if ("author".equals(type) && defaultAuthor != null && !defaultAuthor.isEmpty()) {
-                    for (Book b : moreBooks) {
-                        if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
-                                b.getAuthor().equalsIgnoreCase("Не указан") ||
-                                b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
-                            b.setAuthor(defaultAuthor);
+                    if ("author".equals(type) && defaultAuthor != null && !defaultAuthor.isEmpty()) {
+                        for (Book b : moreBooks) {
+                            if (b.getAuthor() == null || b.getAuthor().isEmpty() ||
+                                    b.getAuthor().equalsIgnoreCase("Не указан") ||
+                                    b.getAuthor().equalsIgnoreCase("Неизвестный автор")) {
+                                b.setAuthor(defaultAuthor);
+                            }
                         }
                     }
+
+                    adapter.addBooks(moreBooks);
+                    adapter.sort(currentSortMode);
+
+                    tvSubtitle.setText("Книг: " + adapter.getItemCount());
+                    tvBooksPageInfo.setText("Страница " + pageNumber + " • Всего книг: " + adapter.getItemCount());
+
+                    if (btnDownloadSeries != null && "series".equals(type)) {
+                        btnDownloadSeries.setText(String.format("Скачать всю серию целиком (%d книг)", adapter.getItemCount()));
+                    }
+
+                    if (currentNextPageUrl == null) {
+                        layoutBooksPagination.setVisibility(View.GONE);
+                    }
                 }
-
-                adapter.addBooks(moreBooks);
-                tvSubtitle.setText("Книг: " + adapter.getItemCount());
-                tvBooksPageInfo.setText("Страница " + pageNumber + " • Книг: " + adapter.getItemCount());
-
-                if (currentNextPageUrl == null) {
-                    btnBooksLoadMore.setVisibility(View.GONE);
-                    tvBooksPageInfo.setText("Все книги загружены • Всего: " + adapter.getItemCount());
-                }
-
-                Toast.makeText(BooksListActivity.this, "Загружено ещё " + moreBooks.size() + " книг", Toast.LENGTH_SHORT).show();
             }
 
             @Override

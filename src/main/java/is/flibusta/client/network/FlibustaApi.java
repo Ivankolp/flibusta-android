@@ -562,10 +562,17 @@ public class FlibustaApi {
                             bookId = "";
                             coverUrl = "";
                             size = "";
+                            String year = "";
+                            String updatedDate = "";
+                            String seriesName = "";
+                            String seriesId = "";
+                            int seriesNumber = 0;
+                            int downloads = 0;
                         } else if (insideEntry) {
                             if ("link".equals(currentTag)) {
                                 String href = parser.getAttributeValue(null, "href");
                                 String rel = parser.getAttributeValue(null, "rel");
+                                String linkTitle = parser.getAttributeValue(null, "title");
                                 if (href != null) {
                                     if (href.contains("/b/") && bookId.isEmpty()) {
                                         Matcher m = Pattern.compile("/b/(\\d+)").matcher(href);
@@ -577,6 +584,18 @@ public class FlibustaApi {
                                         Matcher mAuth = Pattern.compile("/author/(\\d+)").matcher(href);
                                         if (mAuth.find()) {
                                             authorId = mAuth.group(1);
+                                        }
+                                    }
+                                    if (href.contains("/sequencebooks/")) {
+                                        Matcher mSeq = Pattern.compile("/sequencebooks/(\\d+)").matcher(href);
+                                        if (mSeq.find()) {
+                                            seriesId = mSeq.group(1);
+                                        }
+                                        if (linkTitle != null && !linkTitle.isEmpty()) {
+                                            Matcher mSeqTitle = Pattern.compile("серии\\s*[\"']?([^\"']+)[\"']?", Pattern.CASE_INSENSITIVE).matcher(linkTitle);
+                                            if (mSeqTitle.find()) {
+                                                seriesName = mSeqTitle.group(1).trim();
+                                            }
                                         }
                                     }
                                     if (rel != null && (rel.contains("image") || rel.contains("thumbnail") || href.endsWith(".jpg") || href.endsWith(".png"))) {
@@ -620,11 +639,28 @@ public class FlibustaApi {
                                     if (mAuth.find()) {
                                         authorId = mAuth.group(1);
                                     }
+                                } else if ("updated".equals(currentTag)) {
+                                    updatedDate = text;
+                                } else if (("issued".equals(currentTag) || "dc:issued".equals(currentTag)) && year.isEmpty()) {
+                                    year = text;
                                 } else if ("content".equals(currentTag) && content.isEmpty()) {
                                     content = text.replaceAll("<[^>]+>", " ").trim();
                                     Matcher mSize = Pattern.compile("Размер:\\s*([0-9]+\\s*(?:Kb|Mb|Кб|Мб))", Pattern.CASE_INSENSITIVE).matcher(text);
                                     if (mSize.find()) {
                                         size = mSize.group(1);
+                                    }
+                                    Matcher mYear = Pattern.compile("Год издания:\\s*(\\d{4})", Pattern.CASE_INSENSITIVE).matcher(text);
+                                    if (mYear.find() && year.isEmpty()) {
+                                        year = mYear.group(1);
+                                    }
+                                    Matcher mSeq = Pattern.compile("Серия:\\s*([^#<]+?)\\s*#(\\d+)", Pattern.CASE_INSENSITIVE).matcher(text);
+                                    if (mSeq.find()) {
+                                        if (seriesName.isEmpty()) seriesName = mSeq.group(1).trim();
+                                        try { seriesNumber = Integer.parseInt(mSeq.group(2).trim()); } catch (Exception ignored) {}
+                                    }
+                                    Matcher mDl = Pattern.compile("Скачиваний:\\s*(\\d+)", Pattern.CASE_INSENSITIVE).matcher(text);
+                                    if (mDl.find()) {
+                                        try { downloads = Integer.parseInt(mDl.group(1)); } catch (Exception ignored) {}
                                     }
                                 }
                             }
@@ -644,6 +680,12 @@ public class FlibustaApi {
                                 if (!authorId.isEmpty()) {
                                     b.setAuthorId(authorId);
                                 }
+                                if (!seriesId.isEmpty()) b.setSeriesId(seriesId);
+                                if (!seriesName.isEmpty()) b.setSeriesName(seriesName);
+                                if (seriesNumber > 0) b.setSeriesNumber(seriesNumber);
+                                if (!year.isEmpty()) b.setYear(year);
+                                if (!updatedDate.isEmpty()) b.setUpdatedDate(updatedDate);
+                                if (downloads > 0) b.setDownloads(downloads);
                                 list.add(b);
                             }
                         }
@@ -905,5 +947,135 @@ public class FlibustaApi {
             }
         }
         return books;
+    }
+
+    public static void fetchAllSeriesBooks(String seriesId, String defaultAuthor, Callback<List<Book>> callback) {
+        executor.execute(() -> {
+            try {
+                List<Book> allBooks = new ArrayList<>();
+                Set<String> seenIds = new HashSet<>();
+                String nextUrl = BASE_URL + "/opds/sequencebooks/" + seriesId;
+
+                int pageCount = 0;
+                while (nextUrl != null && !nextUrl.isEmpty() && pageCount < 25) {
+                    pageCount++;
+                    String xml = fetchString(nextUrl);
+                    BookPage page = parseBookPageFromOpds(xml);
+                    if (page.getBooks().isEmpty()) {
+                        break;
+                    }
+                    for (Book b : page.getBooks()) {
+                        if (!seenIds.contains(b.getId())) {
+                            seenIds.add(b.getId());
+                            if (defaultAuthor != null && !defaultAuthor.isEmpty() &&
+                                    (b.getAuthor() == null || b.getAuthor().isEmpty() || b.getAuthor().equalsIgnoreCase("Не указан"))) {
+                                b.setAuthor(defaultAuthor);
+                            }
+                            allBooks.add(b);
+                        }
+                    }
+                    nextUrl = page.getNextPageUrl();
+                }
+
+                // If OPDS had nothing, try HTML fallback
+                if (allBooks.isEmpty()) {
+                    String htmlUrl = BASE_URL + "/s/" + seriesId;
+                    String html = fetchString(htmlUrl);
+                    allBooks = parseSeriesBooksFromHtml(html, defaultAuthor);
+                }
+
+                final List<Book> result = allBooks;
+                mainHandler.post(() -> callback.onSuccess(result));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void fetchRandomBook(Callback<Book> callback) {
+        executor.execute(() -> {
+            try {
+                String xml = fetchString(BASE_URL + "/opds/new/0/new");
+                List<Book> books = parseBooksFromOpds(xml);
+                if (!books.isEmpty()) {
+                    int randIdx = (int) (Math.random() * books.size());
+                    Book chosen = books.get(randIdx);
+                    mainHandler.post(() -> callback.onSuccess(chosen));
+                } else {
+                    mainHandler.post(() -> callback.onError(new Exception("Не удалось загрузить случайную книгу")));
+                }
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void fetchGenreBooksSorted(String genreUrlOrId, String sortMode, Callback<BookPage> callback) {
+        executor.execute(() -> {
+            try {
+                String cleanId = genreUrlOrId.replaceAll(".*/", "").trim();
+                String targetUrl;
+                if ("Time".equalsIgnoreCase(sortMode) || "Date".equalsIgnoreCase(sortMode)) {
+                    targetUrl = BASE_URL + "/opds/new/0/newgenres/" + cleanId;
+                } else if ("Pop".equalsIgnoreCase(sortMode)) {
+                    targetUrl = BASE_URL + "/g/" + cleanId + "/Pop";
+                } else if ("Title".equalsIgnoreCase(sortMode)) {
+                    targetUrl = BASE_URL + "/g/" + cleanId + "/Title";
+                } else if ("Author".equalsIgnoreCase(sortMode)) {
+                    targetUrl = BASE_URL + "/g/" + cleanId + "/Author";
+                } else {
+                    targetUrl = genreUrlOrId.startsWith("http") ? genreUrlOrId : BASE_URL + "/opds/genres/" + cleanId;
+                }
+
+                String content = fetchString(targetUrl);
+                BookPage page;
+                if (content.trim().startsWith("<") && (content.contains("<feed") || content.contains("<?xml"))) {
+                    page = parseBookPageFromOpds(content);
+                } else {
+                    page = parseGenreWebPage(content);
+                }
+
+                mainHandler.post(() -> callback.onSuccess(page));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static BookPage parseGenreWebPage(String html) {
+        List<Book> list = new ArrayList<>();
+        if (html == null || html.isEmpty()) return new BookPage(list, null);
+
+        String currentAuthor = "Не указан";
+        String currentAuthorId = "";
+
+        String[] lines = html.split("<br\\s*/?>|\\n");
+        Pattern authorPat = Pattern.compile("<a\\s+href=[\"']/a/(\\d+)[\"'][^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE);
+        Pattern bookPat = Pattern.compile("<a\\s+href=[\"']/b/(\\d+)[\"'][^>]*>(.*?)</a>", Pattern.CASE_INSENSITIVE);
+
+        Set<String> seenIds = new HashSet<>();
+        for (String line : lines) {
+            Matcher aMatch = authorPat.matcher(line);
+            if (aMatch.find()) {
+                currentAuthorId = aMatch.group(1);
+                currentAuthor = aMatch.group(2).replaceAll("<[^>]+>", "").trim();
+            }
+            Matcher bMatch = bookPat.matcher(line);
+            if (bMatch.find()) {
+                String bId = bMatch.group(1);
+                String title = bMatch.group(2).replaceAll("<[^>]+>", "").trim();
+                if (!bId.isEmpty() && !seenIds.contains(bId) && !title.isEmpty()) {
+                    seenIds.add(bId);
+                    Book b = new Book(bId, title, currentAuthor, "В жанре", "FB2", "fb2", BASE_URL + "/b/" + bId + "/fb2");
+                    b.setAuthorId(currentAuthorId);
+                    try {
+                        b.setCoverUrl(BASE_URL + "/i/" + (Integer.parseInt(bId) % 100) + "/" + bId + "/cover.jpg");
+                    } catch (Exception ignored) {}
+                    list.add(b);
+                }
+            }
+            if (list.size() >= 100) break;
+        }
+        return new BookPage(list, null);
     }
 }

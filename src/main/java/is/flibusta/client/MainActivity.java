@@ -13,9 +13,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import is.flibusta.client.util.BookSorter;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
@@ -67,6 +70,16 @@ public class MainActivity extends AppCompatActivity {
     private BookAdapter recommendedBooksAdapter;
     private Book currentFeaturedBook;
     private final List<Book> allLoadedBooks = new ArrayList<>();
+
+    // Quick Actions & Sorting
+    private TextView btnCatalogRandom;
+    private TextView btnCatalogNewArrivals;
+    private TextView btnCatalogSort;
+    private TextView btnSearchSort;
+    private TextView btnLibSort;
+    private is.flibusta.client.util.BookSorter.SortMode catalogSortMode = is.flibusta.client.util.BookSorter.SortMode.DATE_DESC;
+    private is.flibusta.client.util.BookSorter.SortMode searchSortMode = is.flibusta.client.util.BookSorter.SortMode.DATE_DESC;
+    private is.flibusta.client.util.BookSorter.SortMode libSortMode = is.flibusta.client.util.BookSorter.SortMode.DATE_DESC;
 
     // Genre Sorter Chips in Catalog
     private TextView chipGenreAll, chipGenreFantasy, chipGenreScifi, chipGenrePopadantsy;
@@ -225,6 +238,35 @@ public class MainActivity extends AppCompatActivity {
 
         btnCatalogRetry.setOnClickListener(v -> loadLiveCatalog());
 
+        btnCatalogRandom = findViewById(R.id.btn_catalog_random);
+        btnCatalogNewArrivals = findViewById(R.id.btn_catalog_new_arrivals);
+        btnCatalogSort = findViewById(R.id.btn_catalog_sort);
+
+        btnCatalogRandom.setOnClickListener(v -> {
+            Toast.makeText(this, "Подбираем случайную книгу...", Toast.LENGTH_SHORT).show();
+            FlibustaApi.fetchRandomBook(new FlibustaApi.Callback<Book>() {
+                @Override
+                public void onSuccess(Book book) {
+                    openBookDetailActivity(book);
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    Toast.makeText(MainActivity.this, "Не удалось открыть случайную книгу", Toast.LENGTH_SHORT).show();
+                }
+            });
+        });
+
+        btnCatalogNewArrivals.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, BooksListActivity.class);
+            intent.putExtra("type", "genre");
+            intent.putExtra("genre_url", "http://flibusta.is/opds/new/0/new");
+            intent.putExtra("title", "Все новинки недели");
+            startActivity(intent);
+        });
+
+        btnCatalogSort.setOnClickListener(v -> showCatalogSortDialog());
+
         // Setup Genre Chips
         setupGenreChips();
     }
@@ -365,28 +407,27 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void filterBooksByGenre() {
+        List<Book> list;
         if ("Все".equalsIgnoreCase(currentSelectedGenre)) {
-            recommendedBooksAdapter.updateList(allLoadedBooks);
-            return;
-        }
+            list = new ArrayList<>(allLoadedBooks);
+        } else {
+            list = new ArrayList<>();
+            for (Book b : allLoadedBooks) {
+                String g = (b.getGenre() != null ? b.getGenre() : "").toLowerCase();
+                String t = (b.getTitle() != null ? b.getTitle() : "").toLowerCase();
+                String d = (b.getDescription() != null ? b.getDescription() : "").toLowerCase();
 
-        List<Book> filtered = new ArrayList<>();
-        for (Book b : allLoadedBooks) {
-            String g = (b.getGenre() != null ? b.getGenre() : "").toLowerCase();
-            String t = (b.getTitle() != null ? b.getTitle() : "").toLowerCase();
-            String d = (b.getDescription() != null ? b.getDescription() : "").toLowerCase();
-
-            if (g.contains(currentSelectedGenre) || t.contains(currentSelectedGenre) || d.contains(currentSelectedGenre)) {
-                filtered.add(b);
+                if (g.contains(currentSelectedGenre) || t.contains(currentSelectedGenre) || d.contains(currentSelectedGenre)) {
+                    list.add(b);
+                }
+            }
+            if (list.isEmpty()) {
+                list = new ArrayList<>(allLoadedBooks);
+                Toast.makeText(this, "В свежей ленте мало книг этого жанра, показаны все", Toast.LENGTH_SHORT).show();
             }
         }
-
-        if (filtered.isEmpty()) {
-            recommendedBooksAdapter.updateList(allLoadedBooks);
-            Toast.makeText(this, "В свежей ленте мало книг этого жанра, показаны все", Toast.LENGTH_SHORT).show();
-        } else {
-            recommendedBooksAdapter.updateList(filtered);
-        }
+        is.flibusta.client.util.BookSorter.sort(list, catalogSortMode);
+        recommendedBooksAdapter.updateList(list);
     }
 
     private void loadLiveCatalog() {
@@ -533,6 +574,9 @@ public class MainActivity extends AppCompatActivity {
             rvSearchResults.setAdapter(searchSeriesAdapter);
             performSearch();
         });
+
+        btnSearchSort = findViewById(R.id.btn_search_sort);
+        btnSearchSort.setOnClickListener(v -> showSearchSortDialog());
     }
 
     private void performSearch() {
@@ -560,6 +604,7 @@ public class MainActivity extends AppCompatActivity {
                     pbSearchLoading.setVisibility(View.GONE);
                     List<Book> books = result != null ? result.getBooks() : null;
                     if (books != null && !books.isEmpty()) {
+                        is.flibusta.client.util.BookSorter.sort(books, searchSortMode);
                         searchBooksNextPageUrl = result.getNextPageUrl();
                         searchBooksAdapter.updateList(books);
                         rvSearchResults.setVisibility(View.VISIBLE);
@@ -731,6 +776,11 @@ public class MainActivity extends AppCompatActivity {
         chipLibDone.setOnClickListener(v -> setLibraryFilter("Прочитано", chipLibDone));
         chipLibPlanned.setOnClickListener(v -> setLibraryFilter("В планах", chipLibPlanned));
 
+        btnLibSort = findViewById(R.id.btn_lib_sort);
+        if (btnLibSort != null) {
+            btnLibSort.setOnClickListener(v -> showLibSortDialog());
+        }
+
         refreshLibrary();
     }
 
@@ -757,8 +807,92 @@ public class MainActivity extends AppCompatActivity {
         } else {
             layoutLibraryEmpty.setVisibility(View.GONE);
             rvLibraryBooks.setVisibility(View.VISIBLE);
+            BookSorter.sort(books, libSortMode);
             libraryAdapter.updateList(books);
         }
+    }
+
+    private void showCatalogSortDialog() {
+        BookSorter.SortMode[] modes = BookSorter.SortMode.values();
+        String[] titles = new String[modes.length];
+        int selectedIndex = 0;
+        for (int i = 0; i < modes.length; i++) {
+            titles[i] = modes[i].getTitle();
+            if (modes[i] == catalogSortMode) {
+                selectedIndex = i;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Сортировка каталога")
+                .setSingleChoiceItems(titles, selectedIndex, (dialog, which) -> {
+                    catalogSortMode = modes[which];
+                    if (btnCatalogSort != null) {
+                        btnCatalogSort.setText(catalogSortMode.getTitle());
+                        btnCatalogSort.setContentDescription("Сортировка рекомендаций: " + catalogSortMode.getTitle());
+                    }
+                    filterBooksByGenre();
+                    dialog.dismiss();
+                    Toast.makeText(MainActivity.this, "Сортировка: " + catalogSortMode.getTitle(), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void showSearchSortDialog() {
+        BookSorter.SortMode[] modes = BookSorter.SortMode.values();
+        String[] titles = new String[modes.length];
+        int selectedIndex = 0;
+        for (int i = 0; i < modes.length; i++) {
+            titles[i] = modes[i].getTitle();
+            if (modes[i] == searchSortMode) {
+                selectedIndex = i;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Сортировка результатов поиска")
+                .setSingleChoiceItems(titles, selectedIndex, (dialog, which) -> {
+                    searchSortMode = modes[which];
+                    if (btnSearchSort != null) {
+                        btnSearchSort.setText(searchSortMode.getTitle());
+                        btnSearchSort.setContentDescription("Сортировка поиска: " + searchSortMode.getTitle());
+                    }
+                    if (isSearchBooksMode && searchBooksAdapter != null) {
+                        searchBooksAdapter.sort(searchSortMode);
+                    }
+                    dialog.dismiss();
+                    Toast.makeText(MainActivity.this, "Сортировка: " + searchSortMode.getTitle(), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void showLibSortDialog() {
+        BookSorter.SortMode[] modes = BookSorter.SortMode.values();
+        String[] titles = new String[modes.length];
+        int selectedIndex = 0;
+        for (int i = 0; i < modes.length; i++) {
+            titles[i] = modes[i].getTitle();
+            if (modes[i] == libSortMode) {
+                selectedIndex = i;
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("Сортировка книг на полке")
+                .setSingleChoiceItems(titles, selectedIndex, (dialog, which) -> {
+                    libSortMode = modes[which];
+                    if (btnLibSort != null) {
+                        btnLibSort.setText(libSortMode.getTitle());
+                        btnLibSort.setContentDescription("Сортировка полки: " + libSortMode.getTitle());
+                    }
+                    refreshLibrary();
+                    dialog.dismiss();
+                    Toast.makeText(MainActivity.this, "Сортировка: " + libSortMode.getTitle(), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
     }
 
     private void setupNavigation() {

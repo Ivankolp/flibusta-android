@@ -52,6 +52,11 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
         notifyDataSetChanged();
     }
 
+    public void sort(is.flibusta.client.util.BookSorter.SortMode mode) {
+        is.flibusta.client.util.BookSorter.sort(this.books, mode);
+        notifyDataSetChanged();
+    }
+
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {

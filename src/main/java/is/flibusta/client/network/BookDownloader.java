@@ -180,7 +180,7 @@ public class BookDownloader {
         }
     }
 
-    private static File getBooksDirectory(Context context) {
+    public static File getBooksDirectory(Context context) {
         File dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         if (dir == null) {
             dir = new File(context.getFilesDir(), "Flibusta");
@@ -193,7 +193,7 @@ public class BookDownloader {
         return dir;
     }
 
-    private static void downloadToFileWithRedirects(String urlString, File destFile, int redirectCount) throws IOException {
+    public static void downloadToFileWithRedirects(String urlString, File destFile, int redirectCount) throws IOException {
         if (redirectCount > 6) throw new IOException("Слишком много перенаправлений сервера");
         if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
             urlString = FlibustaApi.BASE_URL + (urlString.startsWith("/") ? "" : "/") + urlString;

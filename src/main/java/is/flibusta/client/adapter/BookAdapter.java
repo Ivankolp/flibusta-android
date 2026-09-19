@@ -100,8 +100,8 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.ViewHolder> {
         holder.btnDownload.setText("FB2");
         holder.btnDownload.setContentDescription("Скачать в формате FB2: " + book.getTitle());
 
-        // Card accessibility
-        holder.itemView.setContentDescription(book.getTitle() + ", автор: " + book.getAuthor() + ", жанр: " + book.getGenre());
+        // Full structured TalkBack accessibility description
+        holder.itemView.setContentDescription(book.getFullAccessibilityDescription());
 
         // Clicking the card opens full book details!
         holder.itemView.setOnClickListener(v -> {
@@ -129,6 +129,15 @@ public class BookAdapter extends RecyclerView.Adapter<BookAdapter.ViewHolder> {
                 BookDownloader.downloadBook(context, book, "fb2");
             }
         });
+    }
+
+    public List<Book> getBooks() {
+        return books;
+    }
+
+    public void sort(is.flibusta.client.util.BookSorter.SortMode mode) {
+        is.flibusta.client.util.BookSorter.sort(this.books, mode);
+        notifyDataSetChanged();
     }
 
     @Override
