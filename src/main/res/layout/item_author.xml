@@ -30,7 +30,7 @@
             android:layout_height="38dp"
             android:background="@drawable/bg_badge"
             android:padding="8dp"
-            android:src="@drawable/ic_nav_genres"
+            android:src="@drawable/ic_genre"
             android:importantForAccessibility="no" />
 
         <LinearLayout
