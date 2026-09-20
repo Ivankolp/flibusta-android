@@ -314,6 +314,41 @@ public class BooksListActivity extends AppCompatActivity {
             return;
         }
 
+        if ("library_author".equals(type)) {
+            pbLoading.setVisibility(View.GONE);
+            String targetAuthor = defaultAuthor != null ? defaultAuthor : (query != null ? query : (displayTitle != null ? displayTitle.replace("Автор: ", "") : ""));
+            List<Book> books = db.getBooksByAuthor(targetAuthor);
+            if (books == null || books.isEmpty()) {
+                layoutEmpty.setVisibility(View.VISIBLE);
+                rvBooks.setVisibility(View.GONE);
+                tvSubtitle.setVisibility(View.GONE);
+            } else {
+                BookSorter.sort(books, currentSortMode);
+                layoutEmpty.setVisibility(View.GONE);
+                rvBooks.setVisibility(View.VISIBLE);
+                adapter.updateList(books);
+                tvSubtitle.setVisibility(View.VISIBLE);
+                tvSubtitle.setText("Скачано книг: " + adapter.getItemCount());
+            }
+            return;
+        }
+
+        if ("author".equals(type) && !FlibustaApi.isOnline(this)) {
+            String targetAuthor = defaultAuthor != null ? defaultAuthor : (query != null ? query : (displayTitle != null ? displayTitle.replace("Автор: ", "") : ""));
+            List<Book> offlineBooks = db.getBooksByAuthor(targetAuthor);
+            if (offlineBooks != null && !offlineBooks.isEmpty()) {
+                pbLoading.setVisibility(View.GONE);
+                BookSorter.sort(offlineBooks, currentSortMode);
+                layoutEmpty.setVisibility(View.GONE);
+                rvBooks.setVisibility(View.VISIBLE);
+                adapter.updateList(offlineBooks);
+                tvSubtitle.setVisibility(View.VISIBLE);
+                tvSubtitle.setText("Скачано книг: " + adapter.getItemCount());
+                Toast.makeText(this, "Офлайн-режим: показаны скачанные книги автора", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+
         if (("series".equals(type) || "series_name".equals(type)) && !FlibustaApi.isOnline(this)) {
             String targetSeries = seriesName != null ? seriesName : (query != null ? query : (displayTitle != null ? displayTitle.replace("Серия: ", "") : ""));
             List<Book> offlineBooks = db.getBooksBySeries(targetSeries);

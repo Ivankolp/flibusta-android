@@ -9,6 +9,8 @@ import android.util.Xml;
 
 import org.xmlpull.v1.XmlPullParser;
 
+import is.flibusta.client.data.Author;
+import is.flibusta.client.data.AuthorPage;
 import is.flibusta.client.data.Book;
 import is.flibusta.client.data.BookPage;
 import is.flibusta.client.data.GenreItem;
@@ -367,6 +369,57 @@ public class FlibustaApi {
                 } catch (Exception ignored) {}
 
                 mainHandler.post(() -> callback.onSuccess(new SeriesPage(new ArrayList<>(), null)));
+            } catch (Exception e) {
+                mainHandler.post(() -> callback.onError(e));
+            }
+        });
+    }
+
+    public static void searchAuthorsPage(String query, String pageUrl, Callback<AuthorPage> callback) {
+        if (query == null || query.trim().isEmpty()) {
+            mainHandler.post(() -> callback.onSuccess(new AuthorPage(new ArrayList<>(), null)));
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                if (pageUrl != null && !pageUrl.isEmpty()) {
+                    String content = fetchString(pageUrl);
+                    AuthorPage page;
+                    if (content.trim().startsWith("<") && (content.contains("<feed") || content.contains("<?xml"))) {
+                        page = parseAuthorPageFromOpds(content);
+                    } else {
+                        page = parseAuthorPageFromHtml(content);
+                    }
+                    mainHandler.post(() -> callback.onSuccess(page));
+                    return;
+                }
+
+                String encoded = URLEncoder.encode(query, "UTF-8");
+
+                // 1. Try OPDS authors search
+                try {
+                    String opdsUrl = BASE_URL + "/opds/search?searchType=authors&searchTerm=" + encoded;
+                    String xml = fetchString(opdsUrl);
+                    AuthorPage page = parseAuthorPageFromOpds(xml);
+                    if (!page.getAuthors().isEmpty()) {
+                        mainHandler.post(() -> callback.onSuccess(page));
+                        return;
+                    }
+                } catch (Exception ignored) {}
+
+                // 2. Try HTML booksearch with cha=on
+                try {
+                    String urlStr = BASE_URL + "/booksearch?ask=" + encoded + "&cha=on";
+                    String html = fetchString(urlStr);
+                    AuthorPage page = parseAuthorPageFromHtml(html);
+                    if (!page.getAuthors().isEmpty()) {
+                        mainHandler.post(() -> callback.onSuccess(page));
+                        return;
+                    }
+                } catch (Exception ignored) {}
+
+                mainHandler.post(() -> callback.onSuccess(new AuthorPage(new ArrayList<>(), null)));
             } catch (Exception e) {
                 mainHandler.post(() -> callback.onError(e));
             }
@@ -917,6 +970,142 @@ public class FlibustaApi {
         }
 
         return new SeriesPage(list, nextPageUrl);
+    }
+
+    public static AuthorPage parseAuthorPageFromOpds(String xml) {
+        List<Author> list = new ArrayList<>();
+        String nextPageUrl = null;
+        if (xml == null || xml.isEmpty()) return new AuthorPage(list, null);
+
+        try {
+            XmlPullParser parser = Xml.newPullParser();
+            parser.setInput(new StringReader(xml));
+
+            int eventType = parser.getEventType();
+            boolean insideEntry = false;
+            String currentTag = "";
+            String title = "";
+            String idStr = "";
+            String content = "";
+            String entryHref = "";
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                String name = parser.getName();
+                switch (eventType) {
+                    case XmlPullParser.START_TAG:
+                        currentTag = name != null ? name.toLowerCase() : "";
+                        if ("entry".equals(currentTag)) {
+                            insideEntry = true;
+                            title = "";
+                            idStr = "";
+                            content = "";
+                            entryHref = "";
+                        } else if (insideEntry) {
+                            if ("link".equals(currentTag)) {
+                                String href = parser.getAttributeValue(null, "href");
+                                if (href != null && href.contains("/author/")) {
+                                    entryHref = href;
+                                }
+                            }
+                        } else {
+                            if ("link".equals(currentTag)) {
+                                String rel = parser.getAttributeValue(null, "rel");
+                                String href = parser.getAttributeValue(null, "href");
+                                if (rel != null && rel.contains("next") && href != null && !href.isEmpty()) {
+                                    nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+                                }
+                            }
+                        }
+                        break;
+
+                    case XmlPullParser.TEXT:
+                        if (insideEntry) {
+                            String text = parser.getText();
+                            if (text != null) {
+                                text = text.trim();
+                                if ("title".equals(currentTag) && title.isEmpty()) {
+                                    title = text;
+                                } else if ("id".equals(currentTag) && idStr.isEmpty()) {
+                                    idStr = text;
+                                } else if ("content".equals(currentTag) && content.isEmpty()) {
+                                    content = text;
+                                }
+                            }
+                        }
+                        break;
+
+                    case XmlPullParser.END_TAG:
+                        if ("entry".equals(name != null ? name.toLowerCase() : "")) {
+                            insideEntry = false;
+                            String authorId = "";
+                            if (!entryHref.isEmpty()) {
+                                Matcher m = Pattern.compile("/author/(\\d+)").matcher(entryHref);
+                                if (m.find()) authorId = m.group(1);
+                            }
+                            if (authorId.isEmpty() && !idStr.isEmpty()) {
+                                Matcher m = Pattern.compile("author:(\\d+)").matcher(idStr);
+                                if (m.find()) authorId = m.group(1);
+                            }
+                            if (!title.isEmpty()) {
+                                int count = 0;
+                                Matcher m = Pattern.compile("(\\d+)").matcher(content);
+                                if (m.find()) {
+                                    try {
+                                        count = Integer.parseInt(m.group(1));
+                                    } catch (Exception ignored) {}
+                                }
+                                list.add(new Author(authorId, title, count));
+                            }
+                        }
+                        currentTag = "";
+                        break;
+                }
+                eventType = parser.next();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        if (nextPageUrl == null) {
+            Matcher m1 = Pattern.compile("<link[^>]+href=[\"']([^\"']+)[\"'][^>]+rel=[\"']next[\"']", Pattern.CASE_INSENSITIVE).matcher(xml);
+            if (m1.find()) {
+                String href = m1.group(1);
+                nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+            }
+        }
+
+        return new AuthorPage(list, nextPageUrl);
+    }
+
+    public static AuthorPage parseAuthorPageFromHtml(String html) {
+        List<Author> list = new ArrayList<>();
+        String nextPageUrl = null;
+        if (html == null || html.isEmpty()) return new AuthorPage(list, null);
+
+        Set<String> seenIds = new HashSet<>();
+        Pattern pattern = Pattern.compile("<a\\s+href=[\"']/a/(\\d+)[\"'][^>]*>(.*?)</a>(?:\\s*\\((\\d+)\\s*(?:книг|перевод)[^)]*\\))?", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(html);
+
+        while (matcher.find()) {
+            String aId = matcher.group(1);
+            String name = matcher.group(2).replaceAll("<[^>]+>", "").trim();
+            String countStr = matcher.group(3);
+            int count = countStr != null ? Integer.parseInt(countStr) : 0;
+
+            if (aId != null && !seenIds.contains(aId) && !name.isEmpty()) {
+                seenIds.add(aId);
+                list.add(new Author(aId, name, count));
+            }
+            if (list.size() >= 50) break;
+        }
+
+        Matcher mNext = Pattern.compile("<li\\s+class=[\"']pager-next[\"'][^>]*><a\\s+href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE).matcher(html);
+        if (mNext.find()) {
+            String href = mNext.group(1).replace("&amp;", "&");
+            nextPageUrl = href.startsWith("http") ? href : BASE_URL + href;
+        }
+
+        return new AuthorPage(list, nextPageUrl);
     }
 
     public static List<Series> parseSeriesFromHtml(String html) {

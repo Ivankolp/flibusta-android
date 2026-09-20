@@ -6,6 +6,10 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -231,5 +235,140 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
         cursor.close();
         return list;
+    }
+
+    public synchronized List<Author> getDownloadedAuthors() {
+        List<Author> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT " + COL_AUTHOR + ", COUNT(*) as book_count FROM " + TABLE_LIBRARY
+                        + " WHERE " + COL_AUTHOR + " IS NOT NULL AND TRIM(" + COL_AUTHOR + ") != '' AND " + COL_AUTHOR + " != 'Не указан' AND " + COL_AUTHOR + " != 'Неизвестный автор' GROUP BY " + COL_AUTHOR + " ORDER BY " + COL_AUTHOR + " ASC",
+                null);
+        if (cursor.moveToFirst()) {
+            do {
+                String aName = cursor.getString(0);
+                int count = cursor.getInt(1);
+                list.add(new Author("", aName, count));
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public synchronized List<Book> getBooksByAuthor(String authorName) {
+        List<Book> list = new ArrayList<>();
+        SQLiteDatabase db = this.getReadableDatabase();
+        Cursor cursor = db.rawQuery(
+                "SELECT * FROM " + TABLE_LIBRARY + " WHERE " + COL_AUTHOR + " = ? ORDER BY " + COL_TITLE + " ASC",
+                new String[]{authorName});
+        if (cursor.moveToFirst()) {
+            do {
+                list.add(readBookFromCursor(cursor));
+            } while (cursor.moveToNext());
+        }
+        cursor.close();
+        return list;
+    }
+
+    public synchronized long getTotalDownloadedBytes() {
+        long total = 0;
+        List<Book> books = getDownloadedBooks();
+        for (Book b : books) {
+            String path = b.getLocalPath();
+            if (path != null && !path.trim().isEmpty()) {
+                File f = new File(path);
+                if (f.exists() && f.isFile()) {
+                    total += f.length();
+                }
+            }
+        }
+        return total;
+    }
+
+    public synchronized boolean deleteBookFile(String bookId) {
+        SQLiteDatabase db = this.getWritableDatabase();
+        Cursor cursor = db.rawQuery("SELECT " + COL_LOCAL_PATH + " FROM " + TABLE_LIBRARY + " WHERE " + COL_ID + " = ?", new String[]{bookId});
+        String path = null;
+        if (cursor.moveToFirst()) {
+            path = cursor.getString(0);
+        }
+        cursor.close();
+
+        if (path != null && !path.trim().isEmpty()) {
+            try {
+                File f = new File(path);
+                if (f.exists()) {
+                    f.delete();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        ContentValues cv = new ContentValues();
+        cv.putNull(COL_LOCAL_PATH);
+        cv.put(COL_STATUS, "В планах");
+        int rows = db.update(TABLE_LIBRARY, cv, COL_ID + " = ?", new String[]{bookId});
+        return rows > 0;
+    }
+
+    public synchronized String exportLibraryToJson() {
+        try {
+            List<Book> allBooks = getBooks("Все");
+            JSONArray array = new JSONArray();
+            for (Book b : allBooks) {
+                JSONObject obj = new JSONObject();
+                obj.put("id", b.getId());
+                obj.put("title", b.getTitle());
+                obj.put("author", b.getAuthor());
+                obj.put("genre", b.getGenre());
+                obj.put("size", b.getSize());
+                obj.put("format", b.getFormat());
+                obj.put("download_url", b.getDownloadUrl());
+                obj.put("status", b.getStatus());
+                obj.put("local_path", b.getLocalPath());
+                obj.put("date_added", b.getDateAdded());
+                obj.put("series_name", b.getSeriesName());
+                obj.put("series_id", b.getSeriesId());
+                obj.put("series_number", b.getSeriesNumber());
+                obj.put("description", b.getDescription());
+                obj.put("cover_url", b.getCoverUrl());
+                array.put(obj);
+            }
+            return array.toString(2);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public synchronized int importLibraryFromJson(String jsonStr) {
+        if (jsonStr == null || jsonStr.trim().isEmpty()) return 0;
+        int importedCount = 0;
+        try {
+            JSONArray array = new JSONArray(jsonStr);
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject obj = array.getJSONObject(i);
+                Book b = new Book();
+                b.setId(obj.optString("id"));
+                b.setTitle(obj.optString("title"));
+                b.setAuthor(obj.optString("author"));
+                b.setGenre(obj.optString("genre"));
+                b.setSize(obj.optString("size"));
+                b.setFormat(obj.optString("format"));
+                b.setDownloadUrl(obj.optString("download_url"));
+                b.setStatus(obj.optString("status", "В планах"));
+                b.setLocalPath(obj.optString("local_path", null));
+                b.setDateAdded(obj.optString("date_added"));
+                b.setSeriesName(obj.optString("series_name", null));
+                b.setSeriesId(obj.optString("series_id", null));
+                b.setSeriesNumber(obj.optInt("series_number", 0));
+                b.setDescription(obj.optString("description", null));
+                b.setCoverUrl(obj.optString("cover_url", null));
+
+                if (b.getId() != null && !b.getId().isEmpty()) {
+                    addBook(b);
+                    importedCount++;
+                }
+            }
+        } catch (Exception ignored) {}
+        return importedCount;
     }
 }

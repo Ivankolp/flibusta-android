@@ -1,9 +1,13 @@
 package is.flibusta.client;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.ImageView;
@@ -22,10 +26,13 @@ import is.flibusta.client.util.BookSorter;
 
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 
+import is.flibusta.client.adapter.AuthorAdapter;
 import is.flibusta.client.adapter.BookAdapter;
 import is.flibusta.client.adapter.GenreAdapter;
 import is.flibusta.client.adapter.LibraryAdapter;
 import is.flibusta.client.adapter.SeriesAdapter;
+import is.flibusta.client.data.Author;
+import is.flibusta.client.data.AuthorPage;
 import is.flibusta.client.data.Book;
 import is.flibusta.client.data.BookPage;
 import is.flibusta.client.data.DatabaseHelper;
@@ -35,9 +42,16 @@ import is.flibusta.client.data.SeriesPage;
 import is.flibusta.client.network.BookDownloader;
 import is.flibusta.client.network.FlibustaApi;
 import is.flibusta.client.network.ImageLoader;
+import is.flibusta.client.update.AppUpdateManager;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
+import java.util.Scanner;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -102,15 +116,22 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInsideCategory = false;
 
     // Search Tab
+    private static final int SEARCH_MODE_BOOKS = 0;
+    private static final int SEARCH_MODE_SERIES = 1;
+    private static final int SEARCH_MODE_AUTHORS = 2;
+    private int currentSearchMode = SEARCH_MODE_BOOKS;
+
     private EditText etSearchQuery;
     private TextView btnSearchGo;
     private TextView chipSearchBooks;
     private TextView chipSearchSeries;
+    private TextView chipSearchAuthors;
     private ProgressBar pbSearchLoading;
     private LinearLayout layoutSearchEmpty;
     private RecyclerView rvSearchResults;
     private BookAdapter searchBooksAdapter;
     private SeriesAdapter searchSeriesAdapter;
+    private AuthorAdapter searchAuthorsAdapter;
     private boolean isSearchBooksMode = true;
 
     // Search Pagination
@@ -120,20 +141,25 @@ public class MainActivity extends AppCompatActivity {
     private TextView btnSearchLoadMore;
     private String searchBooksNextPageUrl = null;
     private String searchSeriesNextPageUrl = null;
+    private String searchAuthorsNextPageUrl = null;
     private boolean isSearchLoadingMore = false;
     private String lastSearchQuery = "";
 
     // Library Tab
     private TextView chipLibAll;
     private TextView chipLibSeries;
+    private TextView chipLibAuthors;
     private TextView chipLibDownloaded;
     private TextView chipLibReading;
     private TextView chipLibDone;
     private TextView chipLibPlanned;
+    private TextView tvLibraryStorageInfo;
+    private TextView btnLibraryBackup;
     private LinearLayout layoutLibraryEmpty;
     private RecyclerView rvLibraryBooks;
     private LibraryAdapter libraryAdapter;
     private SeriesAdapter librarySeriesAdapter;
+    private AuthorAdapter libraryAuthorAdapter;
     private String currentLibFilter = "Все";
 
     @Override
@@ -152,6 +178,10 @@ public class MainActivity extends AppCompatActivity {
 
         // Load live catalog from Flibusta
         loadLiveCatalog();
+
+        // Dialogs: Telegram Channel & Auto-Update
+        checkTelegramChannelDialog();
+        AppUpdateManager.checkAutoUpdate(this);
     }
 
     @Override
@@ -163,6 +193,12 @@ public class MainActivity extends AppCompatActivity {
         }
         if (searchBooksAdapter != null) {
             searchBooksAdapter.notifyDataSetChanged();
+        }
+        if (searchAuthorsAdapter != null) {
+            searchAuthorsAdapter.notifyDataSetChanged();
+        }
+        if (libraryAuthorAdapter != null) {
+            libraryAuthorAdapter.notifyDataSetChanged();
         }
     }
 
@@ -522,6 +558,7 @@ public class MainActivity extends AppCompatActivity {
         btnSearchGo = findViewById(R.id.btn_search_go);
         chipSearchBooks = findViewById(R.id.chip_search_books);
         chipSearchSeries = findViewById(R.id.chip_search_series);
+        chipSearchAuthors = findViewById(R.id.chip_search_authors);
         pbSearchLoading = findViewById(R.id.pb_search_loading);
         layoutSearchEmpty = findViewById(R.id.layout_search_empty);
         rvSearchResults = findViewById(R.id.rv_search_results);
@@ -540,12 +577,20 @@ public class MainActivity extends AppCompatActivity {
             public void onScrolled(RecyclerView recyclerView, int dx, int dy) {
                 super.onScrolled(recyclerView, dx, dy);
                 if (dy > 0 && !isSearchLoadingMore) {
-                    boolean hasMore = isSearchBooksMode ? (searchBooksNextPageUrl != null) : (searchSeriesNextPageUrl != null);
-                    if (hasMore) {
-                        int total = isSearchBooksMode ? searchBooksAdapter.getItemCount() : searchSeriesAdapter.getItemCount();
-                        if (lm.findLastVisibleItemPosition() >= total - 3) {
-                            loadMoreSearchResults();
-                        }
+                    boolean hasMore = false;
+                    int total = 0;
+                    if (currentSearchMode == SEARCH_MODE_BOOKS) {
+                        hasMore = (searchBooksNextPageUrl != null);
+                        total = searchBooksAdapter != null ? searchBooksAdapter.getItemCount() : 0;
+                    } else if (currentSearchMode == SEARCH_MODE_SERIES) {
+                        hasMore = (searchSeriesNextPageUrl != null);
+                        total = searchSeriesAdapter != null ? searchSeriesAdapter.getItemCount() : 0;
+                    } else if (currentSearchMode == SEARCH_MODE_AUTHORS) {
+                        hasMore = (searchAuthorsNextPageUrl != null);
+                        total = searchAuthorsAdapter != null ? searchAuthorsAdapter.getItemCount() : 0;
+                    }
+                    if (hasMore && lm.findLastVisibleItemPosition() >= total - 3) {
+                        loadMoreSearchResults();
                     }
                 }
             }
@@ -576,6 +621,17 @@ public class MainActivity extends AppCompatActivity {
         searchSeriesAdapter = new SeriesAdapter(this, null);
         searchSeriesAdapter.setListener(this::openSeriesActivity);
 
+        searchAuthorsAdapter = new AuthorAdapter(this, null);
+        searchAuthorsAdapter.setListener(author -> {
+            if (author == null) return;
+            Intent intent = new Intent(this, BooksListActivity.class);
+            intent.putExtra("type", "author");
+            intent.putExtra("author_id", author.getId());
+            intent.putExtra("author", author.getName());
+            intent.putExtra("title", "Автор: " + author.getName());
+            startActivity(intent);
+        });
+
         btnSearchGo.setOnClickListener(v -> performSearch());
         etSearchQuery.setOnEditorActionListener((v, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_SEARCH) {
@@ -586,27 +642,47 @@ public class MainActivity extends AppCompatActivity {
         });
 
         chipSearchBooks.setOnClickListener(v -> {
+            currentSearchMode = SEARCH_MODE_BOOKS;
             isSearchBooksMode = true;
-            chipSearchBooks.setBackgroundResource(R.drawable.bg_chip_selected);
-            chipSearchBooks.setTextColor(getResources().getColor(R.color.text_primary));
-            chipSearchSeries.setBackgroundResource(R.drawable.bg_chip);
-            chipSearchSeries.setTextColor(getResources().getColor(R.color.text_secondary));
+            setSearchChipSelected(chipSearchBooks);
             rvSearchResults.setAdapter(searchBooksAdapter);
             performSearch();
         });
 
         chipSearchSeries.setOnClickListener(v -> {
+            currentSearchMode = SEARCH_MODE_SERIES;
             isSearchBooksMode = false;
-            chipSearchSeries.setBackgroundResource(R.drawable.bg_chip_selected);
-            chipSearchSeries.setTextColor(getResources().getColor(R.color.text_primary));
-            chipSearchBooks.setBackgroundResource(R.drawable.bg_chip);
-            chipSearchBooks.setTextColor(getResources().getColor(R.color.text_secondary));
+            setSearchChipSelected(chipSearchSeries);
             rvSearchResults.setAdapter(searchSeriesAdapter);
             performSearch();
         });
 
+        if (chipSearchAuthors != null) {
+            chipSearchAuthors.setOnClickListener(v -> {
+                currentSearchMode = SEARCH_MODE_AUTHORS;
+                isSearchBooksMode = false;
+                setSearchChipSelected(chipSearchAuthors);
+                rvSearchResults.setAdapter(searchAuthorsAdapter);
+                performSearch();
+            });
+        }
+
         btnSearchSort = findViewById(R.id.btn_search_sort);
         btnSearchSort.setOnClickListener(v -> showSearchSortDialog());
+    }
+
+    private void setSearchChipSelected(TextView selectedChip) {
+        TextView[] chips = {chipSearchBooks, chipSearchSeries, chipSearchAuthors};
+        for (TextView c : chips) {
+            if (c == null) continue;
+            if (c == selectedChip) {
+                c.setBackgroundResource(R.drawable.bg_chip_selected);
+                c.setTextColor(getResources().getColor(R.color.text_primary));
+            } else {
+                c.setBackgroundResource(R.drawable.bg_chip);
+                c.setTextColor(getResources().getColor(R.color.text_secondary));
+            }
+        }
     }
 
     private void performSearch() {
@@ -619,6 +695,7 @@ public class MainActivity extends AppCompatActivity {
         lastSearchQuery = query;
         searchBooksNextPageUrl = null;
         searchSeriesNextPageUrl = null;
+        searchAuthorsNextPageUrl = null;
         isSearchLoadingMore = false;
         if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
 
@@ -626,7 +703,7 @@ public class MainActivity extends AppCompatActivity {
         layoutSearchEmpty.setVisibility(View.GONE);
         rvSearchResults.setVisibility(View.GONE);
 
-        if (isSearchBooksMode) {
+        if (currentSearchMode == SEARCH_MODE_BOOKS) {
             rvSearchResults.setAdapter(searchBooksAdapter);
             FlibustaApi.searchBooksPage(query, null, new FlibustaApi.Callback<BookPage>() {
                 @Override
@@ -660,7 +737,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
                 }
             });
-        } else {
+        } else if (currentSearchMode == SEARCH_MODE_SERIES) {
             rvSearchResults.setAdapter(searchSeriesAdapter);
             FlibustaApi.searchSeriesPage(query, null, new FlibustaApi.Callback<SeriesPage>() {
                 @Override
@@ -693,13 +770,46 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
                 }
             });
+        } else if (currentSearchMode == SEARCH_MODE_AUTHORS) {
+            rvSearchResults.setAdapter(searchAuthorsAdapter);
+            FlibustaApi.searchAuthorsPage(query, null, new FlibustaApi.Callback<AuthorPage>() {
+                @Override
+                public void onSuccess(AuthorPage result) {
+                    pbSearchLoading.setVisibility(View.GONE);
+                    List<Author> list = result != null ? result.getAuthors() : null;
+                    if (list != null && !list.isEmpty()) {
+                        searchAuthorsNextPageUrl = result.getNextPageUrl();
+                        searchAuthorsAdapter.updateList(list);
+                        rvSearchResults.setVisibility(View.VISIBLE);
+                        if (searchAuthorsNextPageUrl != null) {
+                            layoutSearchPagination.setVisibility(View.VISIBLE);
+                            tvSearchPageInfo.setText("Авторов: " + searchAuthorsAdapter.getItemCount());
+                            btnSearchLoadMore.setText("Загрузить ещё авторов");
+                            btnSearchLoadMore.setVisibility(View.VISIBLE);
+                        } else {
+                            layoutSearchPagination.setVisibility(View.GONE);
+                        }
+                    } else {
+                        layoutSearchEmpty.setVisibility(View.VISIBLE);
+                        if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
+                    }
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    pbSearchLoading.setVisibility(View.GONE);
+                    layoutSearchEmpty.setVisibility(View.VISIBLE);
+                    if (layoutSearchPagination != null) layoutSearchPagination.setVisibility(View.GONE);
+                    Toast.makeText(MainActivity.this, "Поиск не удался: проверьте сеть", Toast.LENGTH_LONG).show();
+                }
+            });
         }
     }
 
     private void loadMoreSearchResults() {
         if (isSearchLoadingMore || lastSearchQuery == null || lastSearchQuery.isEmpty()) return;
 
-        if (isSearchBooksMode) {
+        if (currentSearchMode == SEARCH_MODE_BOOKS) {
             if (searchBooksNextPageUrl == null) return;
 
             isSearchLoadingMore = true;
@@ -742,7 +852,7 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "Не удалось загрузить следующую страницу", Toast.LENGTH_SHORT).show();
                 }
             });
-        } else {
+        } else if (currentSearchMode == SEARCH_MODE_SERIES) {
             if (searchSeriesNextPageUrl == null) return;
 
             isSearchLoadingMore = true;
@@ -785,18 +895,68 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "Не удалось загрузить следующую страницу", Toast.LENGTH_SHORT).show();
                 }
             });
+        } else if (currentSearchMode == SEARCH_MODE_AUTHORS) {
+            if (searchAuthorsNextPageUrl == null) return;
+
+            isSearchLoadingMore = true;
+            pbSearchLoadMore.setVisibility(View.VISIBLE);
+            btnSearchLoadMore.setEnabled(false);
+
+            FlibustaApi.searchAuthorsPage(lastSearchQuery, searchAuthorsNextPageUrl, new FlibustaApi.Callback<AuthorPage>() {
+                @Override
+                public void onSuccess(AuthorPage morePage) {
+                    isSearchLoadingMore = false;
+                    pbSearchLoadMore.setVisibility(View.GONE);
+                    btnSearchLoadMore.setEnabled(true);
+
+                    List<Author> moreAuthors = morePage != null ? morePage.getAuthors() : null;
+                    if (moreAuthors == null || moreAuthors.isEmpty()) {
+                        searchAuthorsNextPageUrl = null;
+                        btnSearchLoadMore.setVisibility(View.GONE);
+                        tvSearchPageInfo.setText("Все авторы загружены • Всего: " + searchAuthorsAdapter.getItemCount());
+                        Toast.makeText(MainActivity.this, "Все доступные авторы загружены", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    searchAuthorsNextPageUrl = morePage.getNextPageUrl();
+                    searchAuthorsAdapter.appendList(moreAuthors);
+                    tvSearchPageInfo.setText("Авторов: " + searchAuthorsAdapter.getItemCount());
+
+                    if (searchAuthorsNextPageUrl == null) {
+                        btnSearchLoadMore.setVisibility(View.GONE);
+                        tvSearchPageInfo.setText("Все авторы загружены • Всего: " + searchAuthorsAdapter.getItemCount());
+                    }
+
+                    Toast.makeText(MainActivity.this, "Загружено ещё " + moreAuthors.size() + " авторов", Toast.LENGTH_SHORT).show();
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    isSearchLoadingMore = false;
+                    pbSearchLoadMore.setVisibility(View.GONE);
+                    btnSearchLoadMore.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Не удалось загрузить следующую страницу", Toast.LENGTH_SHORT).show();
+                }
+            });
         }
     }
 
     private void setupLibraryTab() {
         chipLibAll = findViewById(R.id.chip_lib_all);
         chipLibSeries = findViewById(R.id.chip_lib_series);
+        chipLibAuthors = findViewById(R.id.chip_lib_authors);
         chipLibDownloaded = findViewById(R.id.chip_lib_downloaded);
         chipLibReading = findViewById(R.id.chip_lib_reading);
         chipLibDone = findViewById(R.id.chip_lib_done);
         chipLibPlanned = findViewById(R.id.chip_lib_planned);
         layoutLibraryEmpty = findViewById(R.id.layout_library_empty);
         rvLibraryBooks = findViewById(R.id.rv_library_books);
+
+        tvLibraryStorageInfo = findViewById(R.id.tv_library_storage_info);
+        btnLibraryBackup = findViewById(R.id.btn_library_backup);
+        if (btnLibraryBackup != null) {
+            btnLibraryBackup.setOnClickListener(v -> showLibraryBackupDialog());
+        }
 
         rvLibraryBooks.setLayoutManager(new LinearLayoutManager(this));
         libraryAdapter = new LibraryAdapter(this, null, this::refreshLibrary);
@@ -813,11 +973,24 @@ public class MainActivity extends AppCompatActivity {
             startActivity(intent);
         });
 
+        libraryAuthorAdapter = new AuthorAdapter(this, null);
+        libraryAuthorAdapter.setListener(author -> {
+            if (author == null) return;
+            Intent intent = new Intent(this, BooksListActivity.class);
+            intent.putExtra("type", "library_author");
+            intent.putExtra("author", author.getName());
+            intent.putExtra("title", "Автор: " + author.getName());
+            startActivity(intent);
+        });
+
         rvLibraryBooks.setAdapter(libraryAdapter);
 
         chipLibAll.setOnClickListener(v -> setLibraryFilter("Все", chipLibAll));
         if (chipLibSeries != null) {
             chipLibSeries.setOnClickListener(v -> setLibraryFilter("По сериям", chipLibSeries));
+        }
+        if (chipLibAuthors != null) {
+            chipLibAuthors.setOnClickListener(v -> setLibraryFilter("По авторам", chipLibAuthors));
         }
         if (chipLibDownloaded != null) {
             chipLibDownloaded.setOnClickListener(v -> setLibraryFilter("Скачано", chipLibDownloaded));
@@ -836,7 +1009,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setLibraryFilter(String filter, TextView activeChip) {
         currentLibFilter = filter;
-        TextView[] chips = {chipLibAll, chipLibSeries, chipLibDownloaded, chipLibReading, chipLibDone, chipLibPlanned};
+        TextView[] chips = {chipLibAll, chipLibSeries, chipLibAuthors, chipLibDownloaded, chipLibReading, chipLibDone, chipLibPlanned};
         for (TextView c : chips) {
             if (c == null) continue;
             if (c == activeChip) {
@@ -851,6 +1024,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshLibrary() {
+        if (tvLibraryStorageInfo != null && db != null) {
+            long totalBytes = db.getTotalDownloadedBytes();
+            List<Book> downloaded = db.getDownloadedBooks();
+            int downloadedCount = downloaded != null ? downloaded.size() : 0;
+            String sizeStr;
+            if (totalBytes < 1024 * 1024) {
+                sizeStr = String.format(Locale.getDefault(), "%.1f КБ", totalBytes / 1024.0);
+            } else {
+                sizeStr = String.format(Locale.getDefault(), "%.1f МБ", totalBytes / (1024.0 * 1024.0));
+            }
+            tvLibraryStorageInfo.setText("Скачано: " + downloadedCount + " книг • " + sizeStr);
+            tvLibraryStorageInfo.setContentDescription("Память: скачано " + downloadedCount + " книг, общий размер " + sizeStr);
+        }
+
         if ("По сериям".equals(currentLibFilter)) {
             if (btnLibSort != null) btnLibSort.setVisibility(View.GONE);
             rvLibraryBooks.setAdapter(librarySeriesAdapter);
@@ -862,6 +1049,21 @@ public class MainActivity extends AppCompatActivity {
                 layoutLibraryEmpty.setVisibility(View.GONE);
                 rvLibraryBooks.setVisibility(View.VISIBLE);
                 librarySeriesAdapter.updateList(seriesList);
+            }
+            return;
+        }
+
+        if ("По авторам".equals(currentLibFilter)) {
+            if (btnLibSort != null) btnLibSort.setVisibility(View.GONE);
+            rvLibraryBooks.setAdapter(libraryAuthorAdapter);
+            List<Author> authorsList = db.getDownloadedAuthors();
+            if (authorsList == null || authorsList.isEmpty()) {
+                layoutLibraryEmpty.setVisibility(View.VISIBLE);
+                rvLibraryBooks.setVisibility(View.GONE);
+            } else {
+                layoutLibraryEmpty.setVisibility(View.GONE);
+                rvLibraryBooks.setVisibility(View.VISIBLE);
+                libraryAuthorAdapter.updateList(authorsList);
             }
             return;
         }
@@ -885,6 +1087,123 @@ public class MainActivity extends AppCompatActivity {
             BookSorter.sort(books, libSortMode);
             libraryAdapter.updateList(books);
         }
+    }
+
+    private void showLibraryBackupDialog() {
+        String[] options = {"Создать резервную копию (экспорт в JSON)", "Восстановить из резервной копии (импорт из JSON)"};
+        new AlertDialog.Builder(this)
+                .setTitle("Резервная копия библиотеки")
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        exportLibraryBackup();
+                    } else {
+                        showImportBackupDialog();
+                    }
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    private void exportLibraryBackup() {
+        try {
+            String json = db.exportLibraryToJson();
+            if (json == null || json.isEmpty()) {
+                Toast.makeText(this, "Библиотека пуста, нечего экспортировать", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            File backupDir = new File(downloadDir, "Flibusta");
+            if (!backupDir.exists()) {
+                backupDir.mkdirs();
+            }
+
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
+            String fileName = "flibusta_backup_" + sdf.format(new Date()) + ".json";
+            File backupFile = new File(backupDir, fileName);
+
+            FileWriter writer = new FileWriter(backupFile);
+            writer.write(json);
+            writer.flush();
+            writer.close();
+
+            Toast.makeText(this, "Резервная копия сохранена: Downloads/Flibusta/" + fileName, Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Ошибка при создании резервной копии: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void showImportBackupDialog() {
+        try {
+            File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            File backupDir = new File(downloadDir, "Flibusta");
+            File[] files = backupDir.listFiles((dir, name) -> name.endsWith(".json"));
+
+            if (files == null || files.length == 0) {
+                Toast.makeText(this, "Файлы бэкапа не найдены в Downloads/Flibusta/", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            String[] fileNames = new String[files.length];
+            for (int i = 0; i < files.length; i++) {
+                fileNames[i] = files[i].getName();
+            }
+
+            new AlertDialog.Builder(this)
+                    .setTitle("Выберите файл для восстановления")
+                    .setItems(fileNames, (dialog, which) -> {
+                        importLibraryFromFile(files[which]);
+                    })
+                    .setNegativeButton("Отмена", null)
+                    .show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Ошибка при поиске бэкапов: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void importLibraryFromFile(File file) {
+        try {
+            Scanner scanner = new Scanner(file);
+            StringBuilder sb = new StringBuilder();
+            while (scanner.hasNextLine()) {
+                sb.append(scanner.nextLine());
+            }
+            scanner.close();
+
+            int imported = db.importLibraryFromJson(sb.toString());
+            refreshLibrary();
+            Toast.makeText(this, "Восстановлено записей: " + imported, Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Ошибка импорта: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void checkTelegramChannelDialog() {
+        SharedPreferences prefs = getSharedPreferences("flibusta_prefs", MODE_PRIVATE);
+        boolean hideDialog = prefs.getBoolean("pref_hide_telegram_dialog", false);
+        if (hideDialog) return;
+
+        View dialogView = getLayoutInflater().inflate(R.layout.dialog_telegram_channel, null);
+        CheckBox cbDontShow = dialogView.findViewById(R.id.cb_dont_show_again);
+
+        new AlertDialog.Builder(this)
+                .setTitle("Канал автора")
+                .setView(dialogView)
+                .setPositiveButton("Подписаться", (dialog, which) -> {
+                    if (cbDontShow != null && cbDontShow.isChecked()) {
+                        prefs.edit().putBoolean("pref_hide_telegram_dialog", true).apply();
+                    }
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/flastik_blog"));
+                        startActivity(intent);
+                    } catch (Exception ignored) {}
+                })
+                .setNegativeButton("Закрыть", (dialog, which) -> {
+                    if (cbDontShow != null && cbDontShow.isChecked()) {
+                        prefs.edit().putBoolean("pref_hide_telegram_dialog", true).apply();
+                    }
+                })
+                .show();
     }
 
     private void showCatalogSortDialog() {

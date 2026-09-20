@@ -7,10 +7,11 @@ import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
+import android.net.Uri;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.FileProvider;
 
+import java.io.File;
 import java.util.List;
 
 import is.flibusta.client.data.Book;
@@ -43,6 +44,7 @@ public class BookDetailActivity extends AppCompatActivity {
     private TextView btnDownloadMobi;
     private TextView btnToLibrary;
     private TextView btnRead;
+    private TextView btnShare;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,7 +55,7 @@ public class BookDetailActivity extends AppCompatActivity {
 
         book = (Book) getIntent().getSerializableExtra("book");
         if (book == null) {
-            Toast.makeText(this, "Книга не найдена", Toast.LENGTH_SHORT).show();
+            android.widget.Toast.makeText(this, "Книга не найдена", android.widget.Toast.LENGTH_SHORT).show();
             finish();
             return;
         }
@@ -85,6 +87,10 @@ public class BookDetailActivity extends AppCompatActivity {
         btnDownloadMobi = findViewById(R.id.btn_detail_download_mobi);
         btnToLibrary = findViewById(R.id.btn_detail_to_library);
         btnRead = findViewById(R.id.btn_detail_read);
+        btnShare = findViewById(R.id.btn_detail_share);
+        if (btnShare != null) {
+            btnShare.setOnClickListener(v -> shareBook());
+        }
     }
 
     private void bindBookData() {
@@ -292,5 +298,47 @@ public class BookDetailActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void shareBook() {
+        if (book == null) return;
+        String localPath = book.getLocalPath();
+        File file = (localPath != null && !localPath.isEmpty()) ? new File(localPath) : null;
+
+        if (file != null && file.exists() && file.length() > 0) {
+            try {
+                Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".provider", file);
+                String mimeType = "application/x-fb2";
+                String lowerName = file.getName().toLowerCase();
+                if (lowerName.endsWith(".epub")) mimeType = "application/epub+zip";
+                else if (lowerName.endsWith(".mobi")) mimeType = "application/x-mobipocket-ebook";
+                else if (lowerName.endsWith(".pdf")) mimeType = "application/pdf";
+                else if (lowerName.endsWith(".txt")) mimeType = "text/plain";
+
+                Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                shareIntent.setType(mimeType);
+                shareIntent.putExtra(Intent.EXTRA_STREAM, uri);
+                shareIntent.putExtra(Intent.EXTRA_SUBJECT, book.getTitle() + " - " + book.getAuthor());
+                shareIntent.putExtra(Intent.EXTRA_TEXT, book.getTitle() + "\nАвтор: " + book.getAuthor());
+                shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(Intent.createChooser(shareIntent, "Поделиться файлом книги"));
+            } catch (Exception e) {
+                shareLink();
+            }
+        } else {
+            shareLink();
+        }
+    }
+
+    private void shareLink() {
+        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+        shareIntent.setType("text/plain");
+        String shareText = book.getTitle() + "\nАвтор: " + book.getAuthor();
+        if (book.getId() != null && !book.getId().isEmpty()) {
+            shareText += "\nhttp://flibusta.is/b/" + book.getId();
+        }
+        shareIntent.putExtra(Intent.EXTRA_SUBJECT, book.getTitle());
+        shareIntent.putExtra(Intent.EXTRA_TEXT, shareText);
+        startActivity(Intent.createChooser(shareIntent, "Поделиться ссылкой на книгу"));
     }
 }
