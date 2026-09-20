@@ -6,10 +6,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.CheckBox;
@@ -24,11 +28,13 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -42,6 +48,23 @@ public class AppUpdateManager {
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private static String pendingApkPath = null;
+
+    public static void resumePendingInstall(Activity activity) {
+        if (activity == null || activity.isFinishing()) return;
+        if (pendingApkPath != null) {
+            File apkFile = new File(pendingApkPath);
+            if (apkFile.exists()) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || activity.getPackageManager().canRequestPackageInstalls()) {
+                    String path = pendingApkPath;
+                    pendingApkPath = null;
+                    installApk(activity, new File(path));
+                }
+            } else {
+                pendingApkPath = null;
+            }
+        }
+    }
 
     public static void checkAutoUpdate(Activity activity) {
         checkUpdateInternal(activity, false);
@@ -229,6 +252,15 @@ public class AppUpdateManager {
                 conn.disconnect();
 
                 File finalFile = targetFile;
+                // Also copy to public Downloads folder as a reliable fallback
+                try {
+                    File publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                    if (publicDownloads != null && (publicDownloads.exists() || publicDownloads.mkdirs())) {
+                        File publicFile = new File(publicDownloads, "Flibusta.apk");
+                        copyFile(finalFile, publicFile);
+                    }
+                } catch (Exception ignored) {}
+
                 mainHandler.post(() -> {
                     progressDialog.dismiss();
                     installApk(activity, finalFile);
@@ -268,11 +300,38 @@ public class AppUpdateManager {
         return (HttpURLConnection) u.openConnection();
     }
 
-    private static void installApk(Activity activity, File apkFile) {
+    public static void installApk(Activity activity, File apkFile) {
+        if (activity == null || activity.isFinishing()) return;
         if (apkFile == null || !apkFile.exists()) {
             Toast.makeText(activity, "Файл обновления не найден", Toast.LENGTH_SHORT).show();
             return;
         }
+
+        apkFile.setReadable(true, false);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!activity.getPackageManager().canRequestPackageInstalls()) {
+                pendingApkPath = apkFile.getAbsolutePath();
+                new AlertDialog.Builder(activity)
+                        .setTitle("Разрешение на установку")
+                        .setMessage("Для установки обновления необходимо разрешить установку приложений из этого источника в настройках Android.")
+                        .setPositiveButton("Настройки", (dialog, which) -> {
+                            try {
+                                Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                        Uri.parse("package:" + activity.getPackageName()));
+                                activity.startActivity(intent);
+                            } catch (Exception e) {
+                                Intent intent = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES);
+                                activity.startActivity(intent);
+                            }
+                        })
+                        .setNegativeButton("Отмена", null)
+                        .show();
+                return;
+            }
+        }
+
+        pendingApkPath = null;
 
         try {
             Uri apkUri = FileProvider.getUriForFile(activity, activity.getPackageName() + ".provider", apkFile);
@@ -280,9 +339,29 @@ public class AppUpdateManager {
             intent.setDataAndType(apkUri, "application/vnd.android.package-archive");
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+            List<ResolveInfo> resInfoList = activity.getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY);
+            for (ResolveInfo resolveInfo : resInfoList) {
+                String packageName = resolveInfo.activityInfo.packageName;
+                activity.grantUriPermission(packageName, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
+
             activity.startActivity(intent);
         } catch (Exception e) {
             Toast.makeText(activity, "Ошибка запуска установки: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    private static void copyFile(File src, File dst) {
+        try (InputStream in = new FileInputStream(src);
+             FileOutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[8192];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+            dst.setReadable(true, false);
+        } catch (Exception ignored) {}
     }
 }

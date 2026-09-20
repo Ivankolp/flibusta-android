@@ -187,6 +187,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        AppUpdateManager.resumePendingInstall(this);
         refreshLibrary();
         if (recommendedBooksAdapter != null) {
             recommendedBooksAdapter.notifyDataSetChanged();
