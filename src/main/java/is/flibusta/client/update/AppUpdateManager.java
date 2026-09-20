@@ -7,7 +7,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
@@ -20,6 +19,7 @@ import android.widget.Toast;
 import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.FileProvider;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -36,9 +36,9 @@ import is.flibusta.client.R;
 
 public class AppUpdateManager {
 
-    private static final String UPDATE_URL = "http://31.76.79.172/static/flibusta_version.json";
+    private static final String GITHUB_RELEASES_URL = "https://api.github.com/repos/Ivankolp/flibusta-android/releases/latest";
     private static final String PREFS_NAME = "flibusta_prefs";
-    private static final String KEY_IGNORE_VERSION = "pref_ignore_update_version";
+    private static final String KEY_IGNORE_VERSION = "pref_ignore_update_tag";
 
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
     private static final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -56,15 +56,17 @@ public class AppUpdateManager {
 
         executor.execute(() -> {
             try {
-                URL url = new URL(UPDATE_URL);
+                URL url = new URL(GITHUB_RELEASES_URL);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
+                conn.setRequestProperty("User-Agent", "FlibustaReader-Android");
+                conn.setRequestProperty("Accept", "application/vnd.github.v3+json");
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(10000);
 
                 if (conn.getResponseCode() != 200) {
                     if (isManual) {
-                        mainHandler.post(() -> Toast.makeText(activity, "Не удалось проверить обновления", Toast.LENGTH_SHORT).show());
+                        mainHandler.post(() -> Toast.makeText(activity, "Не удалось проверить обновления на GitHub", Toast.LENGTH_SHORT).show());
                     }
                     return;
                 }
@@ -78,47 +80,94 @@ public class AppUpdateManager {
                 reader.close();
 
                 JSONObject json = new JSONObject(sb.toString());
-                int remoteVersionCode = json.optInt("versionCode", 0);
-                String remoteVersionName = json.optString("versionName", "");
-                String downloadUrl = json.optString("downloadUrl", "");
+                String remoteTag = json.optString("tag_name", "").trim();
+                String remoteName = json.optString("name", remoteTag).trim();
 
-                int currentVersionCode = 0;
+                String downloadUrl = null;
+                JSONArray assets = json.optJSONArray("assets");
+                if (assets != null) {
+                    for (int i = 0; i < assets.length(); i++) {
+                        JSONObject asset = assets.getJSONObject(i);
+                        String assetName = asset.optString("name", "");
+                        if (assetName.toLowerCase().endsWith(".apk")) {
+                            downloadUrl = asset.optString("browser_download_url", null);
+                            break;
+                        }
+                    }
+                }
+
+                if (remoteTag.isEmpty() || downloadUrl == null || downloadUrl.isEmpty()) {
+                    if (isManual) {
+                        mainHandler.post(() -> Toast.makeText(activity, "Файл обновления не найден в релизе GitHub", Toast.LENGTH_SHORT).show());
+                    }
+                    return;
+                }
+
+                String currentVersionName = "1.0.0";
                 try {
                     PackageInfo pInfo = activity.getPackageManager().getPackageInfo(activity.getPackageName(), 0);
-                    currentVersionCode = pInfo.versionCode;
+                    currentVersionName = pInfo.versionName;
                 } catch (Exception ignored) {}
 
                 SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                int ignoredVersion = prefs.getInt(KEY_IGNORE_VERSION, 0);
+                String ignoredTag = prefs.getString(KEY_IGNORE_VERSION, "");
 
-                int finalCurrentVersionCode = currentVersionCode;
+                final String finalCurrentVersionName = currentVersionName;
+                final String finalDownloadUrl = downloadUrl;
+
                 mainHandler.post(() -> {
                     if (activity.isFinishing()) return;
 
-                    if (remoteVersionCode > finalCurrentVersionCode) {
-                        if (!isManual && remoteVersionCode == ignoredVersion) {
+                    if (isNewerVersion(remoteTag, finalCurrentVersionName)) {
+                        if (!isManual && remoteTag.equalsIgnoreCase(ignoredTag)) {
                             return;
                         }
-                        showUpdateDialog(activity, remoteVersionCode, remoteVersionName, downloadUrl);
+                        showUpdateDialog(activity, remoteTag, remoteName, finalDownloadUrl);
                     } else if (isManual) {
-                        Toast.makeText(activity, "У вас установлена последняя версия приложения", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(activity, "У вас установлена последняя версия приложения (" + finalCurrentVersionName + ")", Toast.LENGTH_SHORT).show();
                     }
                 });
 
             } catch (Exception e) {
                 if (isManual) {
-                    mainHandler.post(() -> Toast.makeText(activity, "Ошибка проверки обновлений", Toast.LENGTH_SHORT).show());
+                    mainHandler.post(() -> Toast.makeText(activity, "Ошибка проверки обновлений: " + e.getMessage(), Toast.LENGTH_SHORT).show());
                 }
             }
         });
     }
 
-    private static void showUpdateDialog(Activity activity, int newVersionCode, String newVersionName, String apkUrl) {
+    private static boolean isNewerVersion(String remoteTag, String currentVersionName) {
+        if (remoteTag == null || currentVersionName == null) return false;
+        String r = remoteTag.replaceAll("[^0-9.]", "").trim();
+        String c = currentVersionName.replaceAll("[^0-9.]", "").trim();
+        if (r.isEmpty() || c.isEmpty()) return false;
+
+        String[] rParts = r.split("\\.");
+        String[] cParts = c.split("\\.");
+        int maxLen = Math.max(rParts.length, cParts.length);
+        for (int i = 0; i < maxLen; i++) {
+            int rVal = i < rParts.length ? parseSafeInt(rParts[i]) : 0;
+            int cVal = i < cParts.length ? parseSafeInt(cParts[i]) : 0;
+            if (rVal > cVal) return true;
+            if (rVal < cVal) return false;
+        }
+        return false;
+    }
+
+    private static int parseSafeInt(String s) {
+        try {
+            return Integer.parseInt(s);
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private static void showUpdateDialog(Activity activity, String newTag, String newVersionTitle, String apkUrl) {
         View dialogView = LayoutInflater.from(activity).inflate(R.layout.dialog_update, null);
         TextView tvMsg = dialogView.findViewById(R.id.tv_update_message);
         CheckBox cbIgnore = dialogView.findViewById(R.id.cb_ignore_version);
 
-        tvMsg.setText("Вышла новая версия приложения: " + newVersionName + ".\nХотите обновиться прямо сейчас?");
+        tvMsg.setText("Вышла новая версия приложения: " + newVersionTitle + ".\nХотите обновиться прямо сейчас?");
 
         new AlertDialog.Builder(activity)
                 .setTitle("Доступно обновление")
@@ -126,14 +175,14 @@ public class AppUpdateManager {
                 .setPositiveButton("Обновиться", (dialog, which) -> {
                     if (cbIgnore.isChecked()) {
                         SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                        prefs.edit().putInt(KEY_IGNORE_VERSION, newVersionCode).apply();
+                        prefs.edit().putString(KEY_IGNORE_VERSION, newTag).apply();
                     }
                     downloadAndInstallApk(activity, apkUrl);
                 })
                 .setNegativeButton("Позже", (dialog, which) -> {
                     if (cbIgnore.isChecked()) {
                         SharedPreferences prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                        prefs.edit().putInt(KEY_IGNORE_VERSION, newVersionCode).apply();
+                        prefs.edit().putString(KEY_IGNORE_VERSION, newTag).apply();
                     }
                     dialog.dismiss();
                 })
@@ -143,7 +192,7 @@ public class AppUpdateManager {
     private static void downloadAndInstallApk(Activity activity, String apkUrl) {
         ProgressDialog progressDialog = new ProgressDialog(activity);
         progressDialog.setTitle("Обновление Flibusta Reader");
-        progressDialog.setMessage("Загрузка новой версии...");
+        progressDialog.setMessage("Загрузка новой версии с GitHub...");
         progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
         progressDialog.setMax(100);
         progressDialog.setCancelable(false);
@@ -157,10 +206,7 @@ public class AppUpdateManager {
                 targetFile = new File(dir, "Flibusta_update.apk");
                 if (targetFile.exists()) targetFile.delete();
 
-                URL url = new URL(apkUrl);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.connect();
-
+                HttpURLConnection conn = openConnectionWithRedirects(apkUrl);
                 int fileLength = conn.getContentLength();
                 InputStream input = conn.getInputStream();
                 FileOutputStream output = new FileOutputStream(targetFile);
@@ -180,6 +226,7 @@ public class AppUpdateManager {
                 output.flush();
                 output.close();
                 input.close();
+                conn.disconnect();
 
                 File finalFile = targetFile;
                 mainHandler.post(() -> {
@@ -195,6 +242,30 @@ public class AppUpdateManager {
                 });
             }
         });
+    }
+
+    private static HttpURLConnection openConnectionWithRedirects(String initialUrl) throws Exception {
+        String currentUrl = initialUrl;
+        for (int redirects = 0; redirects < 6; redirects++) {
+            URL u = new URL(currentUrl);
+            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+            conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent", "FlibustaReader-Android");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_MOVED_PERM || code == HttpURLConnection.HTTP_MOVED_TEMP || code == 307 || code == 308) {
+                String loc = conn.getHeaderField("Location");
+                if (loc != null && !loc.isEmpty()) {
+                    currentUrl = loc;
+                    conn.disconnect();
+                    continue;
+                }
+            }
+            return conn;
+        }
+        URL u = new URL(currentUrl);
+        return (HttpURLConnection) u.openConnection();
     }
 
     private static void installApk(Activity activity, File apkFile) {
