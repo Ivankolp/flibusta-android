@@ -923,6 +923,7 @@ public class FlibustaApi {
                                     try {
                                         count = Integer.parseInt(m.group(1));
                                     } catch (Exception ignored) {}
+                                }
                                 list.add(new Series(seqId, title, "", count));
                             }
                         }
