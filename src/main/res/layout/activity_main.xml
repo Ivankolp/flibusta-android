@@ -367,28 +367,6 @@
                         </LinearLayout>
                     </androidx.cardview.widget.CardView>
 
-                    <!-- Section: Popular Series Carousel -->
-                    <TextView
-                        android:id="@+id/tv_header_series"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_marginEnd="16dp"
-                        android:layout_marginTop="18dp"
-                        android:text="@string/popular_series_title"
-                        android:textColor="@color/text_primary"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/rv_popular_series"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:clipToPadding="false"
-                        android:paddingStart="8dp"
-                        android:paddingEnd="8dp" />
-
                     <!-- Section: Genre Sorter Chips -->
                     <TextView
                         android:layout_width="match_parent"

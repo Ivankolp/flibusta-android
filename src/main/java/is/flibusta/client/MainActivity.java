@@ -80,10 +80,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView tvFeaturedDesc;
     private TextView btnFeaturedToLibrary;
     private TextView btnFeaturedDownload;
-    private TextView tvHeaderSeries;
-    private RecyclerView rvPopularSeries;
     private RecyclerView rvRecommendedBooks;
-    private SeriesAdapter popularSeriesAdapter;
     private BookAdapter recommendedBooksAdapter;
     private Book currentFeaturedBook;
     private final List<Book> allLoadedBooks = new ArrayList<>();
@@ -232,12 +229,6 @@ public class MainActivity extends AppCompatActivity {
         btnFeaturedToLibrary = findViewById(R.id.btn_featured_to_library);
         btnFeaturedDownload = findViewById(R.id.btn_featured_download);
 
-        tvHeaderSeries = findViewById(R.id.tv_header_series);
-        rvPopularSeries = findViewById(R.id.rv_popular_series);
-        rvPopularSeries.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
-        popularSeriesAdapter = new SeriesAdapter(this, new ArrayList<>());
-        popularSeriesAdapter.setListener(this::openSeriesActivity);
-        rvPopularSeries.setAdapter(popularSeriesAdapter);
 
         rvRecommendedBooks = findViewById(R.id.rv_recommended_books);
         rvRecommendedBooks.setLayoutManager(new LinearLayoutManager(this));
@@ -518,16 +509,6 @@ public class MainActivity extends AppCompatActivity {
                     }
                 } else {
                     cardFeatured.setVisibility(View.GONE);
-                }
-
-                // 2. Series carousel
-                if (feed.popularSeries != null && !feed.popularSeries.isEmpty()) {
-                    tvHeaderSeries.setVisibility(View.VISIBLE);
-                    rvPopularSeries.setVisibility(View.VISIBLE);
-                    popularSeriesAdapter.updateList(feed.popularSeries);
-                } else {
-                    tvHeaderSeries.setVisibility(View.GONE);
-                    rvPopularSeries.setVisibility(View.GONE);
                 }
 
                 // 3. Recommended books
