@@ -62,22 +62,43 @@ public class SeriesAdapter extends RecyclerView.Adapter<SeriesAdapter.ViewHolder
         Series series = seriesList.get(position);
 
         holder.tvTitle.setText(series.getTitle());
-        holder.tvAuthor.setText(series.getAuthor());
+
+        String author = series.getAuthor();
+        boolean hasValidAuthor = author != null && !author.trim().isEmpty() && !author.equalsIgnoreCase("Цикл на Флибусте");
+        if (hasValidAuthor) {
+            holder.tvAuthor.setVisibility(View.VISIBLE);
+            holder.tvAuthor.setText(author);
+        } else {
+            holder.tvAuthor.setVisibility(View.GONE);
+        }
 
         int count = series.getBookCount();
-        holder.tvCount.setText(count > 0 ? count + " томов" : "Серия");
+        if (count > 1) {
+            holder.tvCount.setText(count + " томов");
+        } else {
+            holder.tvCount.setText("Серия");
+        }
 
-        holder.itemView.setContentDescription("Цикл: " + series.getTitle() + ", автор: " + series.getAuthor() + ", томов: " + (count > 0 ? count : 1));
-        holder.btnOpen.setContentDescription("Смотреть книги цикла: " + series.getTitle());
+        StringBuilder desc = new StringBuilder();
+        desc.append("Цикл: ").append(series.getTitle());
+        if (hasValidAuthor) {
+            desc.append(", автор: ").append(author);
+        }
+        if (count > 1) {
+            desc.append(", томов: ").append(count);
+        }
+        desc.append(". Нажмите дважды, чтобы открыть все книги цикла.");
+        holder.itemView.setContentDescription(desc.toString());
 
-        View.OnClickListener clickAction = v -> {
+        holder.btnOpen.setClickable(false);
+        holder.btnOpen.setFocusable(false);
+        holder.btnOpen.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+        holder.itemView.setOnClickListener(v -> {
             if (listener != null) {
                 listener.onSeriesClick(series);
             }
-        };
-
-        holder.itemView.setOnClickListener(clickAction);
-        holder.btnOpen.setOnClickListener(clickAction);
+        });
     }
 
     @Override

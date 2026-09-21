@@ -73,13 +73,32 @@ public class FlibustaApi {
                     }
                 }
 
-                // 2. Fetch live series from OPDS
-                try {
-                    String seriesXml = fetchString(BASE_URL + "/opds/newsequences");
-                    feed.popularSeries = parseSeriesFromOpds(seriesXml);
-                } catch (Exception ignored) {
-                    feed.popularSeries = new ArrayList<>();
+                // 2. Fetch popular series: curated legends + active series from fresh books
+                List<Series> seriesList = new ArrayList<>();
+                Set<String> seenSeriesNames = new HashSet<>();
+
+                List<Series> curated = getCuratedPopularSeries();
+                for (Series s : curated) {
+                    if (seenSeriesNames.add(s.getTitle().toLowerCase())) {
+                        seriesList.add(s);
+                    }
                 }
+
+                if (liveBooks != null) {
+                    for (Book b : liveBooks) {
+                        String sName = b.getSeriesName();
+                        String sId = b.getSeriesId();
+                        if (sName != null && !sName.trim().isEmpty() && sId != null && !sId.trim().isEmpty()) {
+                            String cleanName = sName.replaceAll("^[\"']|[\"']$", "").trim();
+                            if (seenSeriesNames.add(cleanName.toLowerCase())) {
+                                String author = (b.getAuthor() != null && !b.getAuthor().equalsIgnoreCase("Не указан")) ? b.getAuthor() : "";
+                                seriesList.add(new Series(sId, cleanName, author, b.getSeriesNumber() > 0 ? b.getSeriesNumber() : 0));
+                            }
+                        }
+                    }
+                }
+
+                feed.popularSeries = seriesList;
 
                 mainHandler.post(() -> callback.onSuccess(feed));
             } catch (Exception e) {
@@ -904,8 +923,7 @@ public class FlibustaApi {
                                     try {
                                         count = Integer.parseInt(m.group(1));
                                     } catch (Exception ignored) {}
-                                }
-                                list.add(new Series(seqId, title, "Цикл на Флибусте", count));
+                                list.add(new Series(seqId, title, "", count));
                             }
                         }
                         currentTag = "";
@@ -936,6 +954,22 @@ public class FlibustaApi {
 
     public static List<Series> parseSeriesFromOpds(String xml) {
         return parseSeriesPageFromOpds(xml).getSeriesList();
+    }
+
+    public static List<Series> getCuratedPopularSeries() {
+        List<Series> list = new ArrayList<>();
+        list.add(new Series("2192", "Ведьмак", "Анджей Сапковский", 8));
+        list.add(new Series("2526", "Дозоры", "Сергей Лукьяненко", 6));
+        list.add(new Series("4903", "Метро", "Дмитрий Глуховский", 6));
+        list.add(new Series("1824", "Гарри Поттер", "Дж. К. Роулинг", 7));
+        list.add(new Series("335", "Темная Башня", "Стивен Кинг", 8));
+        list.add(new Series("79232", "Кодекс Охотника", "Юрий Винокуров", 24));
+        list.add(new Series("109297", "Дюна", "Фрэнк Герберт", 6));
+        list.add(new Series("49891", "Властелин Колец", "Дж. Р. Р. Толкин", 3));
+        list.add(new Series("1728", "Плоский мир", "Терри Пратчетт", 41));
+        list.add(new Series("29291", "Лабиринты Ехо", "Макс Фрай", 8));
+        list.add(new Series("4598", "Стальная Крыса", "Гарри Гаррисон", 11));
+        return list;
     }
 
     public static SeriesPage parseSeriesPageFromHtml(String html) {
