@@ -1,6 +1,9 @@
 package is.flibusta.client.data;
 
 import java.io.Serializable;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -52,10 +55,19 @@ public class Book implements Serializable {
     public long getNumericId() {
         if (id == null || id.isEmpty()) return 0;
         try {
-            return Long.parseLong(id.replaceAll("\\D", ""));
-        } catch (Exception e) {
-            return 0;
-        }
+            Matcher m = Pattern.compile("(?:/b/|^)(\\d+)").matcher(id);
+            if (m.find()) {
+                return Long.parseLong(m.group(1));
+            }
+            if (id.matches("\\d+")) {
+                return Long.parseLong(id);
+            }
+            Matcher mDigits = Pattern.compile("(\\d{1,15})").matcher(id);
+            if (mDigits.find()) {
+                return Long.parseLong(mDigits.group(1));
+            }
+        } catch (Exception ignored) {}
+        return 0;
     }
 
     public String getTitle() {
@@ -175,6 +187,44 @@ public class Book implements Serializable {
         this.dateAdded = dateAdded;
     }
 
+    public long getSortableAddedDate() {
+        if (dateAdded == null || dateAdded.trim().isEmpty()) return 0;
+        String dStr = dateAdded.trim();
+        try {
+            if (dStr.contains("-")) {
+                if (dStr.contains(":")) {
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault());
+                    Date d = sdf.parse(dStr);
+                    if (d != null) return d.getTime();
+                } else {
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+                    Date d = sdf.parse(dStr);
+                    if (d != null) return d.getTime();
+                }
+            } else if (dStr.contains(".")) {
+                if (dStr.contains(":")) {
+                    SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault());
+                    Date d = sdf.parse(dStr);
+                    if (d != null) return d.getTime();
+                } else {
+                    SimpleDateFormat sdf = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault());
+                    Date d = sdf.parse(dStr);
+                    if (d != null) return d.getTime();
+                }
+            }
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    public String getFormattedDateAdded() {
+        if (dateAdded == null || dateAdded.trim().isEmpty()) return "";
+        long time = getSortableAddedDate();
+        if (time > 0) {
+            return new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(new Date(time));
+        }
+        return dateAdded;
+    }
+
     public String getSeriesName() {
         return seriesName != null ? seriesName : "";
     }
@@ -201,6 +251,17 @@ public class Book implements Serializable {
 
     public String getYear() {
         return year != null ? year : "";
+    }
+
+    public int getNumericYear() {
+        if (year == null || year.trim().isEmpty()) return 0;
+        try {
+            Matcher m = Pattern.compile("(\\d{4})").matcher(year);
+            if (m.find()) {
+                return Integer.parseInt(m.group(1));
+            }
+        } catch (Exception ignored) {}
+        return 0;
     }
 
     public void setYear(String year) {

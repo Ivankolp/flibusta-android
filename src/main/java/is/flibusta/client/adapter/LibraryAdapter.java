@@ -71,7 +71,7 @@ public class LibraryAdapter extends RecyclerView.Adapter<LibraryAdapter.ViewHold
         holder.tvTitle.setText(book.getTitle());
         holder.tvAuthor.setText(book.getAuthor());
         holder.tvStatus.setText(book.getStatus());
-        holder.tvDate.setText(book.getDateAdded());
+        holder.tvDate.setText(book.getFormattedDateAdded());
 
         ImageLoader.loadCover(holder.ivCover, book.getCoverUrl());
 

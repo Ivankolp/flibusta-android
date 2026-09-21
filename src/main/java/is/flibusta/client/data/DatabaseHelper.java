@@ -96,8 +96,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         cv.put(COL_STATUS, book.getStatus() != null ? book.getStatus() : "В планах");
         cv.put(COL_LOCAL_PATH, book.getLocalPath());
 
-        String dateStr = new SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(new Date());
+        String dateStr = book.getDateAdded();
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            dateStr = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date());
+        }
         cv.put(COL_DATE_ADDED, dateStr);
+        book.setDateAdded(dateStr);
 
         cv.put(COL_SERIES_NAME, book.getSeriesName());
         cv.put(COL_SERIES_ID, book.getSeriesId());
