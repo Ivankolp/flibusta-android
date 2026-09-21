@@ -28,6 +28,8 @@ import is.flibusta.client.util.BookSorter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class BooksListActivity extends AppCompatActivity {
 
@@ -271,11 +273,17 @@ public class BooksListActivity extends AppCompatActivity {
         new AlertDialog.Builder(this)
                 .setTitle("Сортировка списка")
                 .setSingleChoiceItems(titles, selectedIndex, (dialog, which) -> {
+                    BookSorter.SortMode oldMode = currentSortMode;
                     currentSortMode = modes[which];
                     btnSortSelector.setText(currentSortMode.getTitle());
                     btnSortSelector.setContentDescription("Выбрать сортировку списка книг. Текущая: " + currentSortMode.getTitle());
-                    adapter.sort(currentSortMode);
                     dialog.dismiss();
+
+                    if ("genre".equals(type) && oldMode != currentSortMode) {
+                        loadData();
+                    } else {
+                        adapter.sort(currentSortMode);
+                    }
                     Toast.makeText(BooksListActivity.this, "Применена сортировка: " + currentSortMode.getTitle(), Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("Отмена", null)
@@ -427,7 +435,48 @@ public class BooksListActivity extends AppCompatActivity {
         if ("series".equals(type) && seriesId != null) {
             FlibustaApi.loadSeriesBooksPage(seriesId, null, defaultAuthor, callback);
         } else if ("genre".equals(type) && genreUrl != null) {
-            FlibustaApi.fetchBooksPage(genreUrl, callback);
+            String targetGenreUrl = genreUrl;
+            Matcher mId = Pattern.compile("/(\\d+)(?:[/?#].*)?$").matcher(genreUrl);
+            String genreId = "";
+            if (mId.find()) {
+                genreId = mId.group(1);
+            } else if (genreUrl.matches("\\d+")) {
+                genreId = genreUrl;
+            }
+
+            if (!genreId.isEmpty()) {
+                if (currentSortMode == BookSorter.SortMode.DATE_DESC) {
+                    targetGenreUrl = FlibustaApi.BASE_URL + "/opds/new/0/newgenres/" + genreId;
+                } else if (currentSortMode == BookSorter.SortMode.DATE_ASC) {
+                    targetGenreUrl = FlibustaApi.BASE_URL + "/opds/genres/" + genreId;
+                } else if (currentSortMode == BookSorter.SortMode.TITLE_ASC || currentSortMode == BookSorter.SortMode.TITLE_DESC) {
+                    targetGenreUrl = FlibustaApi.BASE_URL + "/g/" + genreId + "/Title";
+                } else if (currentSortMode == BookSorter.SortMode.AUTHOR_ASC) {
+                    targetGenreUrl = FlibustaApi.BASE_URL + "/g/" + genreId + "/Author";
+                }
+            }
+
+            final String fGenreId = genreId;
+            final boolean isDateDesc = (currentSortMode == BookSorter.SortMode.DATE_DESC);
+
+            FlibustaApi.fetchBooksPage(targetGenreUrl, new FlibustaApi.Callback<BookPage>() {
+                @Override
+                public void onSuccess(BookPage page) {
+                    if (isDateDesc && !fGenreId.isEmpty() && page != null && (page.getNextPageUrl() == null || page.getNextPageUrl().isEmpty())) {
+                        page = new BookPage(page.getBooks(), FlibustaApi.BASE_URL + "/g/" + fGenreId);
+                    }
+                    callback.onSuccess(page);
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    if (!fGenreId.isEmpty()) {
+                        FlibustaApi.fetchBooksPage(FlibustaApi.BASE_URL + "/g/" + fGenreId, callback);
+                    } else {
+                        callback.onError(e);
+                    }
+                }
+            });
         } else if ("author".equals(type)) {
             if (authorId != null && !authorId.isEmpty()) {
                 FlibustaApi.loadAuthorBooksPage(authorId, defaultAuthor, callback);
